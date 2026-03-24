@@ -1,0 +1,9 @@
+.git
+frontend
+**/__pycache__
+**/*.pyc
+backend/venv
+backend/.pytest_cache
+backend/*.db
+backend/.env
+*.md
