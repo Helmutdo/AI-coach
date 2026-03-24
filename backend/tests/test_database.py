@@ -29,4 +29,5 @@ def test_lifespan_init_db_creates_tables():
             "daily_metrics",
             "garmin_activities",
             "user_settings",
+            "users",
         ]

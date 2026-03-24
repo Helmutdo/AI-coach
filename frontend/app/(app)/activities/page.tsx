@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { getGarminActivities, type GarminActivityRow } from "@/lib/api";
+import { useAppStore } from "@/store/appStore";
 
 function fmtDuration(sec: number | null) {
   if (sec == null) return "—";
@@ -27,12 +28,14 @@ function fmtDate(iso: string | null) {
 }
 
 export default function ActivitiesPage() {
+  const userId = useAppStore((s) => s.userId);
   const [rows, setRows] = useState<GarminActivityRow[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       try {
         const data = await getGarminActivities({ limit: 100 });
@@ -41,7 +44,7 @@ export default function ActivitiesPage() {
         setErr(e instanceof Error ? e.message : "Failed to load activities");
       }
     })();
-  }, []);
+  }, [userId]);
 
   const types = useMemo(() => {
     const s = new Set<string>();

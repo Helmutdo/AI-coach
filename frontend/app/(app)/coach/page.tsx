@@ -8,6 +8,7 @@ import {
   postCoachChat,
   type ChatMessageRow,
 } from "@/lib/api";
+import { useAppStore } from "@/store/appStore";
 
 const STORAGE_KEY = "garmin-ai-coach-conversation-id";
 
@@ -18,6 +19,7 @@ function sortByTime(a: ChatMessageRow, b: ChatMessageRow) {
 }
 
 export default function CoachPage() {
+  const userId = useAppStore((s) => s.userId);
   const [cid, setCid] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessageRow[]>([]);
   const [input, setInput] = useState("");
@@ -38,6 +40,7 @@ export default function CoachPage() {
   }, []);
 
   useEffect(() => {
+    if (!userId) return;
     (async () => {
       try {
         const ai = await getAIStatus();
@@ -46,7 +49,7 @@ export default function CoachPage() {
         setAiReady(false);
       }
     })();
-  }, []);
+  }, [userId]);
 
   const loadHistory = useCallback(async () => {
     if (!cid) return;
@@ -66,9 +69,10 @@ export default function CoachPage() {
   }, [cid]);
 
   useEffect(() => {
+    if (!userId) return;
     if (aiReady) void loadHistory();
     else if (aiReady === false) setHistoryLoading(false);
-  }, [loadHistory, aiReady]);
+  }, [loadHistory, aiReady, userId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });

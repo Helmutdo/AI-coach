@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, timedelta
 from typing import Any
 
@@ -11,10 +12,12 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from database.database import get_db
+from dependencies.auth import get_current_user_id
 from models.models import ChatMessage, DailyMetrics, GarminActivity
 from orm_serializers import activity_to_dict, daily_metrics_to_dict
 from services.ai_service import AICoachService
 from user_settings_service import get_or_create_user_settings
+from utils.encryption import get_plaintext_api_key
 
 router = APIRouter(prefix="/coach", tags=["coach"])
 
@@ -25,8 +28,8 @@ class ChatBody(BaseModel):
 
 
 def _make_ai_service(settings: Any) -> AICoachService:
-    key = (settings.ai_api_key or "").strip()
-    if not key or key == "unset":
+    key = (get_plaintext_api_key(settings.ai_api_key_encrypted) or "").strip()
+    if not key:
         raise HTTPException(
             status_code=400,
             detail="AI API key not configured — POST /api/auth/ai/configure",
@@ -64,18 +67,25 @@ def _ai_failure_reply(exc: BaseException) -> tuple[str, bool]:
 
 
 @router.post("/chat")
-def coach_chat(body: ChatBody, db: Session = Depends(get_db)) -> dict[str, Any]:
-    settings = get_or_create_user_settings(db)
+def coach_chat(
+    body: ChatBody,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
+    settings = get_or_create_user_settings(db, uid)
     ai = _make_ai_service(settings)
 
     acts = (
         db.query(GarminActivity)
+        .filter(GarminActivity.user_id == uid)
         .order_by(desc(GarminActivity.start_time), desc(GarminActivity.id))
         .limit(20)
         .all()
     )
     metrics = (
         db.query(DailyMetrics)
+        .filter(DailyMetrics.user_id == uid)
         .order_by(desc(DailyMetrics.date))
         .limit(30)
         .all()
@@ -86,7 +96,10 @@ def coach_chat(body: ChatBody, db: Session = Depends(get_db)) -> dict[str, Any]:
 
     prior = (
         db.query(ChatMessage)
-        .filter(ChatMessage.conversation_id == body.conversation_id)
+        .filter(
+            ChatMessage.user_id == uid,
+            ChatMessage.conversation_id == body.conversation_id,
+        )
         .order_by(ChatMessage.created_at.asc())
         .all()
     )
@@ -100,6 +113,7 @@ def coach_chat(body: ChatBody, db: Session = Depends(get_db)) -> dict[str, Any]:
 
     db.add(
         ChatMessage(
+            user_id=uid,
             conversation_id=body.conversation_id,
             role="user",
             content=body.message,
@@ -111,6 +125,7 @@ def coach_chat(body: ChatBody, db: Session = Depends(get_db)) -> dict[str, Any]:
     )
     db.add(
         ChatMessage(
+            user_id=uid,
             conversation_id=body.conversation_id,
             role="assistant",
             content=reply,
@@ -127,19 +142,24 @@ def coach_chat(body: ChatBody, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/analysis")
-def coach_analysis(db: Session = Depends(get_db)) -> dict[str, Any]:
-    settings = get_or_create_user_settings(db)
+def coach_analysis(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
+    settings = get_or_create_user_settings(db, uid)
     ai = _make_ai_service(settings)
 
     start = date.today() - timedelta(days=29)
     metrics = (
         db.query(DailyMetrics)
-        .filter(DailyMetrics.date >= start)
+        .filter(DailyMetrics.user_id == uid, DailyMetrics.date >= start)
         .order_by(DailyMetrics.date.asc())
         .all()
     )
     acts = (
         db.query(GarminActivity)
+        .filter(GarminActivity.user_id == uid)
         .order_by(desc(GarminActivity.start_time))
         .limit(200)
         .all()
@@ -156,9 +176,14 @@ def coach_analysis(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/history")
-def coach_history(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
+def coach_history(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> list[dict[str, Any]]:
+    uid = uuid.UUID(user_id)
     rows = (
         db.query(ChatMessage)
+        .filter(ChatMessage.user_id == uid)
         .order_by(desc(ChatMessage.created_at))
         .limit(50)
         .all()

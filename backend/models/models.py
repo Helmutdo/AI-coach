@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 from typing import Any, Optional
 
@@ -11,9 +12,12 @@ from sqlalchemy import (
     Date,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
+    Uuid,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -21,16 +25,45 @@ from sqlalchemy.orm import Mapped, mapped_column
 from database.database import Base
 
 
+class User(Base):
+    """Registered user (Google OAuth identity)."""
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    google_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    email: Mapped[str] = mapped_column(String(512), nullable=False)
+    name: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(2048), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
 class UserSettings(Base):
-    """Per-installation settings (Garmin account + AI provider credentials)."""
+    """Per-user settings (Garmin account + AI provider credentials)."""
 
     __tablename__ = "user_settings"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
     garmin_email: Mapped[str] = mapped_column(String(255), nullable=False)
     ai_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="anthropic")
-    # Ciphertext or token produced by app-layer encryption; not encrypted by SQLAlchemy.
-    ai_api_key: Mapped[str] = mapped_column(Text, nullable=False)
+    ai_api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    garmin_token_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -49,8 +82,18 @@ class GarminActivity(Base):
 
     __tablename__ = "garmin_activities"
 
+    __table_args__ = (
+        UniqueConstraint("user_id", "activity_id", name="uq_garmin_activity_user_activity"),
+    )
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    activity_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    activity_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     activity_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     activity_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     start_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -72,8 +115,16 @@ class DailyMetrics(Base):
 
     __tablename__ = "daily_metrics"
 
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_daily_metrics_user_date"),)
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     resting_heart_rate: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     avg_stress: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     sleep_duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -96,6 +147,12 @@ class ChatMessage(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     conversation_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True, default="default")
     role: Mapped[str] = mapped_column(String(16), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)

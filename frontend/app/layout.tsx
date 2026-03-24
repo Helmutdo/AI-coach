@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { AppStatusBootstrap } from "@/components/AppStatusBootstrap";
+import { AuthSessionProvider } from "@/components/AuthSessionProvider";
+import { UserSync } from "@/components/UserSync";
 import "./globals.css";
 
 const geistSans = localFont({
@@ -28,7 +31,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-zinc-950 font-sans antialiased`}
       >
-        {children}
+        <AuthSessionProvider>
+          <UserSync />
+          <AppStatusBootstrap />
+          {children}
+        </AuthSessionProvider>
       </body>
     </html>
   );

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -13,21 +14,23 @@ from garminconnect import (
 from sqlalchemy.orm import Session
 
 from models.models import DailyMetrics, GarminActivity
-from services.garmin_service import DEFAULT_TOKENSTORE, GarminService
+from services.garmin_service import (
+    DEFAULT_TOKENSTORE,
+    GarminService,
+    hydrate_garmin_tokenstore_from_db,
+    oauth_tokens_present,
+    user_tokenstore,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def tokens_on_disk() -> bool:
-    p = DEFAULT_TOKENSTORE.expanduser().resolve()
-    return (
-        p.is_dir()
-        and (p / "oauth1_token.json").is_file()
-        and (p / "oauth2_token.json").is_file()
-    )
+    """Legacy helper: default global token dir (startup / old scripts)."""
+    return oauth_tokens_present(DEFAULT_TOKENSTORE)
 
 
-def _dict_to_activity(row: dict[str, Any]) -> GarminActivity:
+def _dict_to_activity(row: dict[str, Any], user_id: uuid.UUID) -> GarminActivity:
     st = row.get("start_time")
     if isinstance(st, str):
         try:
@@ -43,6 +46,7 @@ def _dict_to_activity(row: dict[str, Any]) -> GarminActivity:
     elif synced is None:
         synced = datetime.now(timezone.utc)
     return GarminActivity(
+        user_id=user_id,
         activity_id=str(row["activity_id"]),
         activity_name=row.get("activity_name"),
         activity_type=row.get("activity_type"),
@@ -61,13 +65,14 @@ def _dict_to_activity(row: dict[str, Any]) -> GarminActivity:
     )
 
 
-def _dict_to_daily(row: dict[str, Any]) -> DailyMetrics:
+def _dict_to_daily(row: dict[str, Any], user_id: uuid.UUID) -> DailyMetrics:
     d = row.get("date")
     if isinstance(d, str):
         d = date.fromisoformat(d[:10])
     if d is None:
         raise ValueError("daily row missing date")
     return DailyMetrics(
+        user_id=user_id,
         date=d,
         resting_heart_rate=row.get("resting_heart_rate"),
         avg_stress=row.get("avg_stress"),
@@ -82,10 +87,17 @@ def _dict_to_daily(row: dict[str, Any]) -> DailyMetrics:
     )
 
 
-def _upsert_activity(db: Session, row: dict[str, Any]) -> None:
+def _upsert_activity(db: Session, row: dict[str, Any], user_id: uuid.UUID) -> None:
     aid = str(row["activity_id"])
-    existing = db.query(GarminActivity).filter(GarminActivity.activity_id == aid).first()
-    new_obj = _dict_to_activity(row)
+    existing = (
+        db.query(GarminActivity)
+        .filter(
+            GarminActivity.user_id == user_id,
+            GarminActivity.activity_id == aid,
+        )
+        .first()
+    )
+    new_obj = _dict_to_activity(row, user_id)
     if existing:
         for col in (
             "activity_name",
@@ -108,9 +120,16 @@ def _upsert_activity(db: Session, row: dict[str, Any]) -> None:
         db.add(new_obj)
 
 
-def _upsert_daily(db: Session, row: dict[str, Any]) -> None:
-    new_obj = _dict_to_daily(row)
-    existing = db.query(DailyMetrics).filter(DailyMetrics.date == new_obj.date).first()
+def _upsert_daily(db: Session, row: dict[str, Any], user_id: uuid.UUID) -> None:
+    new_obj = _dict_to_daily(row, user_id)
+    existing = (
+        db.query(DailyMetrics)
+        .filter(
+            DailyMetrics.user_id == user_id,
+            DailyMetrics.date == new_obj.date,
+        )
+        .first()
+    )
     if existing:
         for col in (
             "resting_heart_rate",
@@ -133,13 +152,21 @@ class SyncService:
     """Fetch from Garmin Connect and upsert into SQLite."""
 
     @staticmethod
-    def garmin_session_ready(app_state_active: bool) -> bool:
-        return bool(app_state_active or tokens_on_disk())
+    def garmin_session_ready(
+        *,
+        db: Session,
+        user_id: uuid.UUID,
+        app_state_active: bool,
+    ) -> bool:
+        ts = user_tokenstore(user_id)
+        hydrate_garmin_tokenstore_from_db(db, user_id, ts)
+        return bool(app_state_active or oauth_tokens_present(ts))
 
     @staticmethod
     def full_sync(
         db: Session,
         *,
+        user_id: uuid.UUID,
         app_state_active: bool = False,
     ) -> dict[str, Any]:
         """
@@ -152,7 +179,10 @@ class SyncService:
         activities: list[dict[str, Any]] = []
         daily: list[dict[str, Any]] = []
 
-        if not SyncService.garmin_session_ready(app_state_active):
+        tokenstore = user_tokenstore(user_id)
+        if not SyncService.garmin_session_ready(
+            db=db, user_id=user_id, app_state_active=app_state_active
+        ):
             msg = "Garmin session not active — connect in Settings or ensure OAuth tokens exist"
             errors.append(msg)
             return {
@@ -162,7 +192,7 @@ class SyncService:
                 "partial": True,
             }
 
-        svc = GarminService()
+        svc = GarminService(tokenstore=tokenstore)
         try:
             activities = svc.get_recent_activities(20)
         except GarminConnectAuthenticationError as e:
@@ -188,7 +218,7 @@ class SyncService:
             if not row.get("activity_id"):
                 continue
             try:
-                _upsert_activity(db, row)
+                _upsert_activity(db, row, user_id)
                 act_count += 1
             except Exception as e:
                 errors.append(f"Upsert activity {row.get('activity_id')}: {e}")
@@ -196,7 +226,7 @@ class SyncService:
         day_count = 0
         for row in daily:
             try:
-                _upsert_daily(db, row)
+                _upsert_daily(db, row, user_id)
                 day_count += 1
             except ValueError as e:
                 errors.append(f"Daily row skipped: {e}")

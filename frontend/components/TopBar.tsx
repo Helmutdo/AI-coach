@@ -13,9 +13,10 @@ function formatSync(d: Date | null): string {
 }
 
 export function TopBar() {
-  const { garminConnected, lastSync, setGarminConnected } = useAppStore();
+  const { garminConnected, lastSync, setGarminConnected, userId } = useAppStore();
 
   useEffect(() => {
+    if (!userId) return;
     let cancelled = false;
     (async () => {
       try {
@@ -28,7 +29,7 @@ export function TopBar() {
     return () => {
       cancelled = true;
     };
-  }, [setGarminConnected]);
+  }, [setGarminConnected, userId]);
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-6 backdrop-blur">

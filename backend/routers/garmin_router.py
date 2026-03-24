@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from collections import Counter
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -11,6 +12,7 @@ from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
 from database.database import get_db
+from dependencies.auth import get_current_user_id
 from models.models import DailyMetrics, GarminActivity
 from services.sync_service import SyncService
 
@@ -22,9 +24,15 @@ def _week_start(d: date) -> date:
 
 
 @router.post("/sync")
-def sync_garmin(request: Request, db: Session = Depends(get_db)) -> dict[str, Any]:
+def sync_garmin(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
     result = SyncService.full_sync(
         db,
+        user_id=uid,
         app_state_active=getattr(request.app.state, "garmin_session_active", False),
     )
     if result.get("synced_activities", 0) or result.get("synced_days", 0):
@@ -35,10 +43,13 @@ def sync_garmin(request: Request, db: Session = Depends(get_db)) -> dict[str, An
 @router.get("/activities")
 def list_activities(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     limit: int = Query(20, ge=1, le=200),
 ) -> list[dict[str, Any]]:
+    uid = uuid.UUID(user_id)
     rows = (
         db.query(GarminActivity)
+        .filter(GarminActivity.user_id == uid)
         .order_by(desc(GarminActivity.start_time), desc(GarminActivity.id))
         .limit(limit)
         .all()
@@ -70,12 +81,14 @@ def list_activities(
 @router.get("/daily-metrics")
 def list_daily_metrics(
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
     days: int = Query(30, ge=1, le=366),
 ) -> list[dict[str, Any]]:
+    uid = uuid.UUID(user_id)
     start = date.today() - timedelta(days=days - 1)
     rows = (
         db.query(DailyMetrics)
-        .filter(DailyMetrics.date >= start)
+        .filter(DailyMetrics.user_id == uid, DailyMetrics.date >= start)
         .order_by(desc(DailyMetrics.date))
         .all()
     )
@@ -98,7 +111,11 @@ def list_daily_metrics(
 
 
 @router.get("/summary")
-def garmin_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
+def garmin_summary(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
     today = date.today()
     ws = _week_start(today)
     we = ws + timedelta(days=6)
@@ -108,18 +125,21 @@ def garmin_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
     act_count = (
         db.query(func.count(GarminActivity.id))
         .filter(
-            and_(
-                GarminActivity.start_time.isnot(None),
-                GarminActivity.start_time >= start_dt,
-                GarminActivity.start_time <= end_dt,
-            )
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= start_dt,
+            GarminActivity.start_time <= end_dt,
         )
         .scalar()
     ) or 0
 
     week_metrics = (
         db.query(DailyMetrics)
-        .filter(DailyMetrics.date >= ws, DailyMetrics.date <= today)
+        .filter(
+            DailyMetrics.user_id == uid,
+            DailyMetrics.date >= ws,
+            DailyMetrics.date <= today,
+        )
         .all()
     )
 
@@ -130,7 +150,10 @@ def garmin_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
     hrv_mode = Counter(hrv_list).most_common(1)[0][0] if hrv_list else None
 
     latest = (
-        db.query(DailyMetrics).order_by(desc(DailyMetrics.date)).first()
+        db.query(DailyMetrics)
+        .filter(DailyMetrics.user_id == uid)
+        .order_by(desc(DailyMetrics.date))
+        .first()
     )
     body_battery = None
     if latest:

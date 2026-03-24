@@ -66,7 +66,7 @@ function aggregateDuration14(activities: GarminActivityRow[]) {
 }
 
 export default function DashboardPage() {
-  const { setGarminConnected, setAiConfigured } = useAppStore();
+  const { setStatusFromApi, userId } = useAppStore();
   const [summary, setSummary] = useState<GarminSummaryResponse | null>(null);
   const [activities, setActivities] = useState<GarminActivityRow[]>([]);
   const [garminOk, setGarminOk] = useState<boolean | null>(null);
@@ -77,6 +77,7 @@ export default function DashboardPage() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!userId) return;
     setLoadErr(null);
     try {
       const [st, ai, s, acts] = await Promise.all([
@@ -85,8 +86,11 @@ export default function DashboardPage() {
         getGarminSummary(),
         getGarminActivities({ limit: 200 }),
       ]);
-      setGarminConnected(st.active);
-      setAiConfigured(ai.configured);
+      setStatusFromApi({
+        garminActive: st.active,
+        aiConfigured: ai.configured,
+        aiProvider: ai.provider,
+      });
       setGarminOk(st.active);
       setAiOk(ai.configured);
       setSummary(s);
@@ -94,11 +98,12 @@ export default function DashboardPage() {
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : "Failed to load dashboard");
     }
-  }, [setGarminConnected, setAiConfigured]);
+  }, [userId, setStatusFromApi]);
 
   useEffect(() => {
+    if (!userId) return;
     void load();
-  }, [load]);
+  }, [load, userId]);
 
   const loadSeries = useMemo(() => aggregateLoad30(activities), [activities]);
   const durSeries = useMemo(() => aggregateDuration14(activities), [activities]);

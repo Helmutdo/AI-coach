@@ -32,6 +32,20 @@ class Base(DeclarativeBase):
     pass
 
 
+def _migrate_user_settings_secrets() -> None:
+    """Add garmin_token_encrypted; rename ai_api_key → ai_api_key_encrypted (existing DBs)."""
+    insp = inspect(engine)
+    if not insp.has_table("user_settings"):
+        return
+    cols = {c["name"] for c in insp.get_columns("user_settings")}
+    with engine.begin() as conn:
+        if "garmin_token_encrypted" not in cols:
+            conn.execute(text("ALTER TABLE user_settings ADD COLUMN garmin_token_encrypted TEXT"))
+        cols2 = {c["name"] for c in inspect(engine).get_columns("user_settings")}
+        if "ai_api_key" in cols2 and "ai_api_key_encrypted" not in cols2:
+            conn.execute(text("ALTER TABLE user_settings RENAME COLUMN ai_api_key TO ai_api_key_encrypted"))
+
+
 def _sqlite_add_chat_conversation_id() -> None:
     """Add conversation_id to chat_messages if missing (SQLite dev DBs)."""
     if not DATABASE_URL.startswith("sqlite"):
@@ -55,6 +69,7 @@ def init_db() -> None:
     import models.models  # noqa: F401 — registers tables on Base.metadata
 
     Base.metadata.create_all(bind=engine)
+    _migrate_user_settings_secrets()
     _sqlite_add_chat_conversation_id()
 
 

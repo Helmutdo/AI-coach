@@ -1,9 +1,12 @@
 /**
  * Typed Axios client for the Garmin AI Coach FastAPI backend.
  * Set NEXT_PUBLIC_API_URL (default http://127.0.0.1:8000).
+ * Sends X-User-Id from the Zustand store (set after POST /api/users/me).
  */
 
 import axios, { type AxiosInstance } from "axios";
+
+import { useAppStore } from "@/store/appStore";
 
 const baseURL =
   typeof window !== "undefined"
@@ -14,6 +17,18 @@ export const api: AxiosInstance = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" },
   timeout: 120_000,
+});
+
+api.interceptors.request.use((config) => {
+  const url = config.url ?? "";
+  const skip = url.includes("/api/users/me");
+  if (!skip && typeof window !== "undefined") {
+    const id = useAppStore.getState().userId;
+    if (id) {
+      config.headers.set("X-User-Id", id);
+    }
+  }
+  return config;
 });
 
 api.interceptors.response.use(
@@ -48,6 +63,8 @@ export type GarminLoginResponse = {
 export type GarminStatusResponse = {
   active: boolean;
   oauth_tokens_present: boolean;
+  /** Garmin account email when connected and stored on the server */
+  garmin_email: string | null;
 };
 
 export type AIConfigureBody = {
@@ -56,8 +73,8 @@ export type AIConfigureBody = {
 };
 
 export type AIConfigureResponse = {
-  status: string;
   provider: string;
+  key_preview: string;
 };
 
 export type GarminSyncResponse = {
@@ -70,6 +87,7 @@ export type GarminSyncResponse = {
 export type AIStatusResponse = {
   configured: boolean;
   provider: string | null;
+  key_preview: string | null;
 };
 
 export type GarminActivityRow = {
@@ -144,6 +162,30 @@ export type CoachChatResponse = {
   provider_error?: boolean;
 };
 
+// ——— User (backend) ———
+
+export type UserMeBody = {
+  google_id: string;
+  email: string;
+  name: string;
+  avatar_url: string | null;
+};
+
+export type UserMeResponse = {
+  id: string;
+  google_id: string;
+  email: string;
+  name: string;
+  avatar_url: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export async function postUsersMe(body: UserMeBody): Promise<UserMeResponse> {
+  const { data } = await api.post<UserMeResponse>("/api/users/me", body);
+  return data;
+}
+
 // ——— Auth ———
 
 export async function postGarminLogin(
@@ -174,6 +216,36 @@ export async function postAIConfigure(
   const { data } = await api.post<AIConfigureResponse>(
     "/api/auth/ai/configure",
     body
+  );
+  return data;
+}
+
+export async function deleteGarminDisconnect(): Promise<{ status: string }> {
+  const { data } = await api.delete<{ status: string }>(
+    "/api/auth/garmin/disconnect"
+  );
+  return data;
+}
+
+export async function deleteAIConfigure(): Promise<{ status: string }> {
+  const { data } = await api.delete<{ status: string }>(
+    "/api/auth/ai/configure"
+  );
+  return data;
+}
+
+export type DeleteUserDataResponse = {
+  status: string;
+  deleted: {
+    activities: number;
+    daily_metrics: number;
+    chat_messages: number;
+  };
+};
+
+export async function deleteUserData(): Promise<DeleteUserDataResponse> {
+  const { data } = await api.delete<DeleteUserDataResponse>(
+    "/api/users/me/data"
   );
   return data;
 }

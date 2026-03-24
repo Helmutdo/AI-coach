@@ -4,8 +4,10 @@ Garmin Connect integration service using garminconnect / Garth OAuth tokens.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,9 @@ from garminconnect import (
     GarminConnectAuthenticationError,
     GarminConnectConnectionError,
 )
+from sqlalchemy.orm import Session
+
+from models.models import UserSettings
 
 _BACKEND_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(_BACKEND_DIR / ".env")
@@ -24,6 +29,89 @@ logger = logging.getLogger(__name__)
 
 # Default directory for Garth OAuth token files (oauth1_token.json, oauth2_token.json).
 DEFAULT_TOKENSTORE = Path.home() / ".garminconnect"
+
+
+def user_tokenstore(user_id: uuid.UUID) -> Path:
+    """Per-user OAuth token directory under the server home directory."""
+    return Path.home() / f".garminconnect_{user_id}"
+
+
+def oauth_tokens_present(tokenstore: Path) -> bool:
+    p = tokenstore.expanduser().resolve()
+    return (
+        p.is_dir()
+        and (p / "oauth1_token.json").is_file()
+        and (p / "oauth2_token.json").is_file()
+    )
+
+
+def read_token_bundle(tokenstore: Path) -> dict[str, Any]:
+    """Load oauth1 + oauth2 JSON from a Garth token directory."""
+    p = tokenstore.expanduser().resolve()
+    o1 = json.loads((p / "oauth1_token.json").read_text(encoding="utf-8"))
+    o2 = json.loads((p / "oauth2_token.json").read_text(encoding="utf-8"))
+    return {"oauth1": o1, "oauth2": o2}
+
+
+def write_token_bundle(tokenstore: Path, data: dict[str, Any]) -> None:
+    """Write oauth1 + oauth2 JSON files for Garth."""
+    p = tokenstore.expanduser().resolve()
+    p.mkdir(parents=True, exist_ok=True)
+    (p / "oauth1_token.json").write_text(
+        json.dumps(data["oauth1"], ensure_ascii=False), encoding="utf-8"
+    )
+    (p / "oauth2_token.json").write_text(
+        json.dumps(data["oauth2"], ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def persist_garmin_tokens_encrypted(db: Session, user_id: uuid.UUID, tokenstore: Path) -> None:
+    """Encrypt OAuth token JSON and store on UserSettings after a successful Garmin login."""
+    if not oauth_tokens_present(tokenstore):
+        return
+    from user_settings_service import get_or_create_user_settings
+    from utils.encryption import encrypt
+
+    bundle = read_token_bundle(tokenstore)
+    raw = json.dumps(bundle, separators=(",", ":"))
+    row = get_or_create_user_settings(db, user_id)
+    row.garmin_token_encrypted = encrypt(raw)
+    db.add(row)
+    db.commit()
+
+
+def hydrate_garmin_tokenstore_from_db(db: Session, user_id: uuid.UUID, tokenstore: Path) -> bool:
+    """If disk has no OAuth files but DB holds encrypted tokens, decrypt and write files."""
+    if oauth_tokens_present(tokenstore):
+        return True
+    row = db.query(UserSettings).filter(UserSettings.user_id == user_id).first()
+    if not row or not row.garmin_token_encrypted:
+        return False
+    from utils.encryption import decrypt
+
+    plain = decrypt(row.garmin_token_encrypted)
+    if not plain:
+        return False
+    try:
+        data = json.loads(plain)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(data, dict) or "oauth1" not in data or "oauth2" not in data:
+        return False
+    write_token_bundle(tokenstore, data)
+    return True
+
+
+def clear_garmin_token_files(tokenstore: Path) -> None:
+    """Remove OAuth JSON files from disk (best-effort)."""
+    p = tokenstore.expanduser().resolve()
+    for name in ("oauth1_token.json", "oauth2_token.json"):
+        fp = p / name
+        if fp.is_file():
+            try:
+                fp.unlink()
+            except OSError:
+                logger.warning("Could not remove %s", fp)
 
 
 def _parse_datetime(value: Any) -> datetime | None:
