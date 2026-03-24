@@ -1,3 +1,5 @@
+import { NextResponse } from "next/server";
+
 import { auth } from "@/auth";
 
 const APP_PREFIXES = ["/dashboard", "/settings", "/coach", "/activities", "/onboarding"];
@@ -8,6 +10,14 @@ function isAppRoute(pathname: string): boolean {
 
 export default auth(async (req) => {
   const { pathname } = req.nextUrl;
+
+  /* Google OAuth usa el host de la URL actual como redirect_uri. Si abres 127.0.0.1 pero en
+   * Google Console solo está localhost (o al revés), obtienes redirect_uri_mismatch. */
+  if (process.env.NODE_ENV === "development" && req.nextUrl.hostname === "127.0.0.1") {
+    const url = req.nextUrl.clone();
+    url.hostname = "localhost";
+    return NextResponse.redirect(url);
+  }
 
   if (pathname.startsWith("/api/auth")) {
     return;

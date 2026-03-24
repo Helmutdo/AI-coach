@@ -1,12 +1,53 @@
 // Google Cloud Console setup:
 // 1. console.cloud.google.com → New Project → APIs & Services → Credentials
 // 2. Create OAuth 2.0 Client ID → Web Application
-// 3. Authorized redirect URIs:
-//    - http://localhost:3001/api/auth/callback/google  (dev)
+// 3. Authorized JavaScript origins (Web client):
+//    - http://localhost:3000  (y el puerto que uses, ej. :3001)
+//    - http://127.0.0.1:3000  (mejor usa solo localhost; el middleware redirige 127.0.0.1→localhost)
+// 4. Authorized redirect URIs:
+//    - http://localhost:3000/api/auth/callback/google
 //    - https://your-app.vercel.app/api/auth/callback/google  (prod)
+// Si la app OAuth está en modo "Testing", añade tu Gmail en "Test users".
 
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+
+/**
+ * OAuth Client ID es público; aceptamos GOOGLE_CLIENT_ID o NEXT_PUBLIC_GOOGLE_CLIENT_ID
+ * (algunos tutoriales solo ponen el prefijo NEXT_PUBLIC_*).
+ * El secret nunca debe ser NEXT_PUBLIC_*.
+ */
+function googleClientId(): string {
+  return (
+    process.env.GOOGLE_CLIENT_ID?.trim() ||
+    process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim() ||
+    ""
+  );
+}
+
+function googleClientSecret(): string {
+  return process.env.GOOGLE_CLIENT_SECRET?.trim() || "";
+}
+
+const _googleId = googleClientId();
+const _googleSecret = googleClientSecret();
+if (process.env.NODE_ENV === "development" && (!_googleId || !_googleSecret)) {
+  console.error(
+    "[auth] Falta GOOGLE_CLIENT_ID o GOOGLE_CLIENT_SECRET en frontend/.env.local — " +
+      "sin client_id Google responde 400 invalid_request. Reinicia `npm run dev` tras guardar."
+  );
+}
+
+/** Auth.js requires a non-empty secret; env wins, dev-only fallback for local `next dev`. */
+function authSecret(): string | undefined {
+  const fromEnv =
+    process.env.AUTH_SECRET?.trim() || process.env.NEXTAUTH_SECRET?.trim();
+  if (fromEnv) return fromEnv;
+  if (process.env.NODE_ENV === "development") {
+    return "dev-only-insecure-secret-set-AUTH_SECRET-for-production";
+  }
+  return undefined;
+}
 
 async function syncBackendUser(token: {
   id?: string;
@@ -29,7 +70,18 @@ async function syncBackendUser(token: {
         avatar_url: token.picture ?? null,
       }),
     });
-    if (!res.ok) return undefined;
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(
+        "[auth] syncBackendUser failed:",
+        res.status,
+        errText.slice(0, 500),
+        "— is the API running at",
+        base,
+        "?"
+      );
+      return undefined;
+    }
     const data = (await res.json()) as { id: string };
     return data.id;
   } catch {
@@ -41,12 +93,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: _googleId,
+      clientSecret: _googleSecret,
     }),
   ],
   session: { strategy: "jwt" },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: authSecret(),
   callbacks: {
     async jwt({ token, user, account, profile }) {
       if (user) {

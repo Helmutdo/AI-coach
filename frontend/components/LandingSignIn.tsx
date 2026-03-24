@@ -43,7 +43,7 @@ export function LandingSignIn() {
 
         <button
           type="button"
-          onClick={() => void signIn("google")}
+          onClick={() => void signIn("google", { callbackUrl: "/" })}
           className="mt-10 inline-flex w-full max-w-sm items-center justify-center gap-3 rounded-lg bg-[#4285F4] px-6 py-3.5 text-sm font-semibold text-white shadow-lg transition hover:bg-[#3367d6] focus:outline-none focus:ring-2 focus:ring-[#4285F4] focus:ring-offset-2 focus:ring-offset-zinc-950"
         >
           <GoogleIcon />
