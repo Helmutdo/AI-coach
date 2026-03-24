@@ -1,0 +1,8 @@
+# Monorepo root — keep build artifacts and secrets out of Git
+/backend/venv/
+/backend/.env
+/backend/*.db
+/frontend/node_modules/
+/frontend/.next/
+/frontend/.env*.local
+.DS_Store
