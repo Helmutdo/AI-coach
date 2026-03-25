@@ -326,6 +326,40 @@ export async function postStravaSync(body?: {
   return data;
 }
 
+export type StravaActivityRow = {
+  id: string;
+  strava_id: string;
+  name: string;
+  sport_type: string;
+  start_date: string;
+  elapsed_time: number;
+  distance: number;
+  moving_time: number;
+  total_elevation_gain: number;
+  avg_heartrate: number | null;
+  max_heartrate: number | null;
+  avg_watts: number | null;
+  weighted_avg_watts: number | null;
+  suffer_score: number | null;
+  avg_cadence: number | null;
+  avg_speed: number | null;
+  pr_count: number | null;
+  achievement_count: number | null;
+  kudos_count: number | null;
+  map_polyline: string | null;
+  synced_at: string | null;
+};
+
+export async function getStravaActivities(params?: {
+  limit?: number;
+  sport_type?: string;
+}): Promise<StravaActivityRow[]> {
+  const { data } = await api.get<StravaActivityRow[]>("/api/strava/activities", {
+    params: { limit: params?.limit ?? 50, sport_type: params?.sport_type },
+  });
+  return data;
+}
+
 // ——— Coach ———
 
 export async function getCoachAnalysis(): Promise<CoachAnalysis> {

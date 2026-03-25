@@ -19,10 +19,12 @@ import {
   getGarminActivities,
   getGarminStatus,
   getGarminSummary,
+  getStravaActivities,
   getStravaStatus,
   type CoachAnalysis,
   type GarminActivityRow,
   type GarminSummaryResponse,
+  type StravaActivityRow,
 } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 
@@ -50,15 +52,23 @@ function aggregateLoad30(activities: GarminActivityRow[]) {
   return keys.map((k) => ({ day: k.slice(5), load: map.get(k) ?? 0 }));
 }
 
-function aggregateDuration14(activities: GarminActivityRow[]) {
+function aggregateDuration14(
+  garmin: GarminActivityRow[],
+  strava: StravaActivityRow[],
+) {
   const keys = dayKeys(14);
   const map = new Map(keys.map((k) => [k, 0]));
-  for (const a of activities) {
+  for (const a of garmin) {
     if (!a.start_time) continue;
     const d = a.start_time.slice(0, 10);
     if (!map.has(d)) continue;
-    const sec = Number(a.duration_seconds ?? 0);
-    map.set(d, (map.get(d) ?? 0) + sec);
+    map.set(d, (map.get(d) ?? 0) + Number(a.duration_seconds ?? 0));
+  }
+  for (const a of strava) {
+    if (!a.start_date) continue;
+    const d = a.start_date.slice(0, 10);
+    if (!map.has(d)) continue;
+    map.set(d, (map.get(d) ?? 0) + Number(a.moving_time ?? 0));
   }
   return keys.map((k) => ({
     day: k.slice(5),
@@ -70,6 +80,7 @@ export default function DashboardPage() {
   const { setStatusFromApi, userId, stravaConnected } = useAppStore();
   const [summary, setSummary] = useState<GarminSummaryResponse | null>(null);
   const [activities, setActivities] = useState<GarminActivityRow[]>([]);
+  const [stravaActivities, setStravaActivities] = useState<StravaActivityRow[]>([]);
   const [garminOk, setGarminOk] = useState<boolean | null>(null);
   const [aiOk, setAiOk] = useState<boolean | null>(null);
   const [analysis, setAnalysis] = useState<CoachAnalysis | null>(null);
@@ -81,12 +92,13 @@ export default function DashboardPage() {
     if (!userId) return;
     setLoadErr(null);
     try {
-      const [st, strava, ai, s, acts] = await Promise.all([
+      const [st, strava, ai, s, acts, stravaActs] = await Promise.all([
         getGarminStatus(),
         getStravaStatus(),
         getAIStatus(),
         getGarminSummary(),
         getGarminActivities({ limit: 200 }),
+        getStravaActivities({ limit: 200 }),
       ]);
       setStatusFromApi({
         garminActive: st.active,
@@ -100,6 +112,7 @@ export default function DashboardPage() {
       setAiOk(ai.configured);
       setSummary(s);
       setActivities(acts);
+      setStravaActivities(stravaActs);
     } catch (e) {
       setLoadErr(e instanceof Error ? e.message : "Failed to load dashboard");
     }
@@ -111,7 +124,10 @@ export default function DashboardPage() {
   }, [load, userId]);
 
   const loadSeries = useMemo(() => aggregateLoad30(activities), [activities]);
-  const durSeries = useMemo(() => aggregateDuration14(activities), [activities]);
+  const durSeries = useMemo(
+    () => aggregateDuration14(activities, stravaActivities),
+    [activities, stravaActivities],
+  );
 
   async function runAnalysis() {
     setAnalysisLoading(true);
@@ -194,6 +210,15 @@ export default function DashboardPage() {
           </p>
           <p className="mt-1 text-xs text-zinc-500">Mode this week</p>
         </div>
+        {stravaConnected && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">Strava activities</p>
+            <p className="mt-2 text-2xl font-semibold text-zinc-100">
+              {stravaActivities.length}
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">Loaded (last 200)</p>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -218,7 +243,7 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4">
-          <h2 className="mb-4 text-sm font-medium text-zinc-300">Activity duration / day (14 days)</h2>
+          <h2 className="mb-4 text-sm font-medium text-zinc-300">Activity duration / day (14 days, Garmin + Strava)</h2>
           <div className="h-64 min-h-[16rem] w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={durSeries}>
