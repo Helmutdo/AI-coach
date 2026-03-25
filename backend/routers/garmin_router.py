@@ -8,6 +8,8 @@ from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
@@ -17,6 +19,7 @@ from models.models import DailyMetrics, GarminActivity
 from services.sync_service import SyncService
 
 router = APIRouter(prefix="/garmin", tags=["garmin"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _week_start(d: date) -> date:
@@ -24,6 +27,7 @@ def _week_start(d: date) -> date:
 
 
 @router.post("/sync")
+@limiter.limit("5/minute")
 def sync_garmin(
     request: Request,
     db: Session = Depends(get_db),

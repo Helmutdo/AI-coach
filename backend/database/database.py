@@ -46,6 +46,44 @@ def _migrate_user_settings_secrets() -> None:
             conn.execute(text("ALTER TABLE user_settings RENAME COLUMN ai_api_key TO ai_api_key_encrypted"))
 
 
+def _migrate_user_settings_strava() -> None:
+    """Add Strava OAuth columns on existing user_settings (SQLite / Postgres)."""
+    insp = inspect(engine)
+    if not insp.has_table("user_settings"):
+        return
+    cols = {c["name"] for c in insp.get_columns("user_settings")}
+    dialect = engine.dialect.name
+    stmts: list[str] = []
+    if "strava_access_token_encrypted" not in cols:
+        stmts.append(
+            "ALTER TABLE user_settings ADD COLUMN strava_access_token_encrypted TEXT"
+        )
+    if "strava_refresh_token_encrypted" not in cols:
+        stmts.append(
+            "ALTER TABLE user_settings ADD COLUMN strava_refresh_token_encrypted TEXT"
+        )
+    if "strava_token_expires_at" not in cols:
+        stmts.append("ALTER TABLE user_settings ADD COLUMN strava_token_expires_at INTEGER")
+    if "strava_athlete_id" not in cols:
+        stmts.append("ALTER TABLE user_settings ADD COLUMN strava_athlete_id TEXT")
+    if "strava_athlete_name" not in cols:
+        stmts.append("ALTER TABLE user_settings ADD COLUMN strava_athlete_name TEXT")
+    if "strava_connected" not in cols:
+        if dialect == "sqlite":
+            stmts.append(
+                "ALTER TABLE user_settings ADD COLUMN strava_connected INTEGER NOT NULL DEFAULT 0"
+            )
+        else:
+            stmts.append(
+                "ALTER TABLE user_settings ADD COLUMN strava_connected BOOLEAN NOT NULL DEFAULT false"
+            )
+    if not stmts:
+        return
+    with engine.begin() as conn:
+        for s in stmts:
+            conn.execute(text(s))
+
+
 def _sqlite_add_chat_conversation_id() -> None:
     """Add conversation_id to chat_messages if missing (SQLite dev DBs)."""
     if not DATABASE_URL.startswith("sqlite"):
@@ -71,6 +109,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_user_settings_secrets()
     _sqlite_add_chat_conversation_id()
+    _migrate_user_settings_strava()
 
 
 def get_db() -> Generator[Session, None, None]:

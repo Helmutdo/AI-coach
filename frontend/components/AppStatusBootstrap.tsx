@@ -3,7 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
 
-import { getAIStatus, getGarminStatus } from "@/lib/api";
+import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 
 /**
@@ -19,18 +19,28 @@ export function AppStatusBootstrap() {
     let cancelled = false;
     (async () => {
       try {
-        const [g, ai] = await Promise.all([getGarminStatus(), getAIStatus()]);
+        const [g, st, ai] = await Promise.all([
+          getGarminStatus(),
+          getStravaStatus(),
+          getAIStatus(),
+        ]);
         if (!cancelled) {
           setStatusFromApi({
             garminActive: g.active,
+            stravaConnected: st.connected,
+            stravaOAuthConfigured: st.oauth_configured ?? true,
+            stravaAthleteName: st.athlete_name,
             aiConfigured: ai.configured,
             aiProvider: ai.provider ?? null,
           });
         }
-      } catch {
+      } catch (err) {
+        console.error("[AppStatusBootstrap] Failed to load status from backend:", err);
         if (!cancelled) {
           setStatusFromApi({
             garminActive: false,
+            stravaConnected: false,
+            stravaAthleteName: null,
             aiConfigured: false,
             aiProvider: null,
           });

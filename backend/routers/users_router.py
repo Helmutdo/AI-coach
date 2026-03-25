@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import ChatMessage, DailyMetrics, GarminActivity, User
+from models.models import ChatMessage, DailyMetrics, GarminActivity, StravaActivity, User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -67,6 +67,7 @@ def delete_my_data(
     """Remove synced activities, daily metrics, and chat history for the current user."""
     uid = uuid.UUID(user_id)
     n_act = db.query(GarminActivity).filter(GarminActivity.user_id == uid).delete()
+    n_strava = db.query(StravaActivity).filter(StravaActivity.user_id == uid).delete()
     n_day = db.query(DailyMetrics).filter(DailyMetrics.user_id == uid).delete()
     n_chat = db.query(ChatMessage).filter(ChatMessage.user_id == uid).delete()
     db.commit()
@@ -74,6 +75,7 @@ def delete_my_data(
         "status": "ok",
         "deleted": {
             "activities": n_act,
+            "strava_activities": n_strava,
             "daily_metrics": n_day,
             "chat_messages": n_chat,
         },

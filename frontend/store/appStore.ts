@@ -2,8 +2,12 @@ import { create } from "zustand";
 
 export type AppStore = {
   garminConnected: boolean;
+  stravaConnected: boolean;
+  /** From GET /api/strava/status — false if server env lacks Strava OAuth vars */
+  stravaOAuthConfigured: boolean;
+  stravaAthleteName: string | null;
   aiConfigured: boolean;
-  /** True when both Garmin session and AI key are configured (from API). */
+  /** True when (Garmin or Strava) and AI key are configured (from API). */
   onboardingComplete: boolean;
   aiProvider: string | null;
   lastSync: Date | null;
@@ -15,16 +19,26 @@ export type AppStore = {
   setAiProvider: (v: string | null) => void;
   setLastSync: (d: Date | null) => void;
   setUserId: (id: string | null) => void;
-  /** Sync all flags from GET /api/auth/garmin/status + GET /api/auth/ai/status */
+  /** Sync flags from GET /api/auth/garmin/status + GET /api/strava/status + GET /api/auth/ai/status */
   setStatusFromApi: (g: {
     garminActive: boolean;
+    stravaConnected: boolean;
+    stravaOAuthConfigured?: boolean;
+    stravaAthleteName: string | null;
     aiConfigured: boolean;
     aiProvider: string | null;
   }) => void;
 };
 
+function hasFitnessSource(g: { garminConnected: boolean; stravaConnected: boolean }) {
+  return g.garminConnected || g.stravaConnected;
+}
+
 export const useAppStore = create<AppStore>((set, get) => ({
   garminConnected: false,
+  stravaConnected: false,
+  stravaOAuthConfigured: true,
+  stravaAthleteName: null,
   aiConfigured: false,
   onboardingComplete: false,
   aiProvider: null,
@@ -33,22 +47,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setGarminConnected: (v) =>
     set({
       garminConnected: v,
-      onboardingComplete: v && get().aiConfigured,
+      onboardingComplete: hasFitnessSource({ garminConnected: v, stravaConnected: get().stravaConnected }) && get().aiConfigured,
     }),
   setAiConfigured: (v) =>
     set({
       aiConfigured: v,
-      onboardingComplete: get().garminConnected && v,
+      onboardingComplete: hasFitnessSource(get()) && v,
     }),
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
   setAiProvider: (v) => set({ aiProvider: v }),
   setLastSync: (d) => set({ lastSync: d }),
   setUserId: (id) => set({ userId: id }),
-  setStatusFromApi: ({ garminActive, aiConfigured, aiProvider }) =>
+  setStatusFromApi: ({
+    garminActive,
+    stravaConnected,
+    stravaOAuthConfigured,
+    stravaAthleteName,
+    aiConfigured,
+    aiProvider,
+  }) =>
     set({
       garminConnected: garminActive,
+      stravaConnected,
+      stravaOAuthConfigured: stravaOAuthConfigured ?? true,
+      stravaAthleteName,
       aiConfigured,
       aiProvider,
-      onboardingComplete: garminActive && aiConfigured,
+      onboardingComplete:
+        hasFitnessSource({ garminConnected: garminActive, stravaConnected }) && aiConfigured,
     }),
 }));

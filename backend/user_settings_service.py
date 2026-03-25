@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 
 from sqlalchemy.orm import Session
 
 from models.models import UserSettings
+
+logger = logging.getLogger(__name__)
 
 
 def get_or_create_user_settings(db: Session, user_id: uuid.UUID) -> UserSettings:
@@ -31,7 +34,11 @@ def get_or_create_user_settings(db: Session, user_id: uuid.UUID) -> UserSettings
         try:
             row.ai_api_key_encrypted = encrypt(env_key)
         except RuntimeError:
-            pass
+            logger.warning(
+                "ENCRYPTION_KEY not set — env AI key will not be stored for new user %s. "
+                "Set ENCRYPTION_KEY and re-register to persist the key.",
+                user_id,
+            )
     db.add(row)
     db.commit()
     db.refresh(row)

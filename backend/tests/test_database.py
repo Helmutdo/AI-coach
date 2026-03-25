@@ -28,6 +28,7 @@ def test_lifespan_init_db_creates_tables():
             "chat_messages",
             "daily_metrics",
             "garmin_activities",
+            "strava_activities",
             "user_settings",
             "users",
         ]

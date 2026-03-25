@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import re
+from collections import Counter
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -23,7 +25,8 @@ OPENAI_MODEL = "gpt-4o"
 GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or "gemini-2.0-flash").strip() or "gemini-2.0-flash"
 MAX_TOKENS = 1500
 
-_SYSTEM_COACH = """You are an expert endurance sports coach with access to the athlete's real Garmin data.
+_SYSTEM_COACH = """You are an expert endurance sports coach with access to the athlete's real training data
+from Garmin Connect and/or Strava when connected.
 Analyze their metrics and provide personalized, evidence-based training recommendations.
 Be specific, reference their actual data, and explain the reasoning behind your recommendations."""
 
@@ -69,75 +72,174 @@ def _activity_datetime(a: dict[str, Any]) -> datetime:
     return _EPOCH
 
 
-def _activity_sort_key(a: dict[str, Any]) -> datetime:
-    return _activity_datetime(a)
+@dataclass
+class _UnifiedActivity:
+    sort_dt: datetime
+    act_date: date
+    source: str
+    type: str
+    duration_min: float
+    distance_km: float
+    avg_hr: float | None
+    effort_0_5: float | None
+    is_hard: bool
 
 
-def _activity_local_date(a: dict[str, Any]) -> date | None:
+def _strava_activity_datetime(a: dict[str, Any]) -> datetime:
     st = a.get("start_time")
     if isinstance(st, datetime):
-        return st.date()
-    if isinstance(st, date) and not isinstance(st, datetime):
-        return st
+        return st.replace(tzinfo=None) if st.tzinfo else st
     if isinstance(st, str):
-        return _as_date(st)
-    return None
+        try:
+            s = st.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            return dt.replace(tzinfo=None) if dt.tzinfo else dt
+        except ValueError:
+            pass
+    return _EPOCH
 
 
-def _fmt_duration(sec: Any) -> str:
-    if sec is None:
+def _unified_from_garmin(a: dict[str, Any]) -> _UnifiedActivity | None:
+    dt = _activity_datetime(a)
+    if dt == _EPOCH:
+        return None
+    d = dt.date()
+    dur = a.get("duration_seconds")
+    try:
+        dmin = float(dur) / 60.0 if dur is not None else 0.0
+    except (TypeError, ValueError):
+        dmin = 0.0
+    dist_m = a.get("distance_meters")
+    try:
+        dkm = float(dist_m) / 1000.0 if dist_m is not None else 0.0
+    except (TypeError, ValueError):
+        dkm = 0.0
+    hr = a.get("avg_heart_rate")
+    try:
+        hr_f = float(hr) if hr is not None else None
+    except (TypeError, ValueError):
+        hr_f = None
+    ae = a.get("aerobic_effect")
+    try:
+        ae_f = float(ae) if ae is not None else None
+    except (TypeError, ValueError):
+        ae_f = None
+    effort = min(max(ae_f, 0.0), 5.0) if ae_f is not None else None
+    is_hard = bool(ae_f is not None and ae_f > 4.0)
+    typ = str(a.get("activity_type") or "unknown")
+    return _UnifiedActivity(
+        sort_dt=dt,
+        act_date=d,
+        source="[Garmin]",
+        type=typ,
+        duration_min=dmin,
+        distance_km=dkm,
+        avg_hr=hr_f,
+        effort_0_5=effort,
+        is_hard=is_hard,
+    )
+
+
+def _unified_from_strava(a: dict[str, Any]) -> _UnifiedActivity | None:
+    dt = _strava_activity_datetime(a)
+    if dt == _EPOCH:
+        return None
+    d = dt.date()
+    mt = a.get("moving_time")
+    if mt is None:
+        mt = a.get("elapsed_time")
+    try:
+        dmin = float(mt) / 60.0 if mt is not None else 0.0
+    except (TypeError, ValueError):
+        dmin = 0.0
+    dist_m = a.get("distance")
+    try:
+        dkm = float(dist_m) / 1000.0 if dist_m is not None else 0.0
+    except (TypeError, ValueError):
+        dkm = 0.0
+    hr = a.get("avg_heartrate")
+    try:
+        hr_f = float(hr) if hr is not None else None
+    except (TypeError, ValueError):
+        hr_f = None
+    ss = a.get("suffer_score")
+    try:
+        ss_f = float(ss) if ss is not None else None
+    except (TypeError, ValueError):
+        ss_f = None
+    if ss_f is not None:
+        effort = min(max(ss_f / 30.0, 0.0), 5.0)
+    else:
+        effort = None
+    is_hard = bool(ss_f is not None and ss_f > 70.0)
+    typ = str(a.get("sport_type") or "unknown")
+    return _UnifiedActivity(
+        sort_dt=dt,
+        act_date=d,
+        source="[Strava]",
+        type=typ,
+        duration_min=dmin,
+        distance_km=dkm,
+        avg_hr=hr_f,
+        effort_0_5=effort,
+        is_hard=is_hard,
+    )
+
+
+def _merge_unified(
+    garmin_activities: list[dict[str, Any]],
+    strava_activities: list[dict[str, Any]],
+) -> list[_UnifiedActivity]:
+    out: list[_UnifiedActivity] = []
+    for a in garmin_activities:
+        if isinstance(a, dict):
+            u = _unified_from_garmin(a)
+            if u:
+                out.append(u)
+    for a in strava_activities:
+        if isinstance(a, dict):
+            u = _unified_from_strava(a)
+            if u:
+                out.append(u)
+    out.sort(key=lambda x: x.sort_dt, reverse=True)
+    return out
+
+
+def _fmt_hr(hr: float | None) -> str:
+    if hr is None:
         return "—"
     try:
-        s = int(sec)
+        return str(int(round(hr)))
     except (TypeError, ValueError):
-        return str(sec)
-    if s < 0:
         return "—"
-    m, s = divmod(s, 60)
-    h, m = divmod(m, 60)
-    if h:
-        return f"{h}h {m}m"
-    return f"{m}m {s}s"
 
 
-def _training_load_sum_for_range(
-    activities: list[dict[str, Any]],
-    start_d: date,
-    end_d: date,
-) -> float:
-    total = 0.0
-    for a in activities:
-        d = _activity_local_date(a)
-        if d is None or d < start_d or d > end_d:
-            continue
-        tl = a.get("training_load")
-        if tl is not None:
-            try:
-                total += float(tl)
-            except (TypeError, ValueError):
-                pass
-    return total
+def _fmt_effort(eff: float | None) -> str:
+    if eff is None:
+        return "—"
+    return f"{eff:.1f}"
 
 
-def _weekly_load_trend_text(activities: list[dict[str, Any]]) -> str:
-    today = date.today()
-    last_start = today - timedelta(days=6)
-    prior_end = today - timedelta(days=7)
-    prior_start = today - timedelta(days=13)
+def _week_type_summary(types: Counter[str]) -> str:
+    if not types:
+        return "—"
+    parts = [f"{t} x{c}" for t, c in types.most_common()]
+    return ", ".join(parts)
 
-    last7 = _training_load_sum_for_range(activities, last_start, today)
-    prev7 = _training_load_sum_for_range(activities, prior_start, prior_end)
 
-    if prev7 <= 0 and last7 <= 0:
-        return "Insufficient training load data in the last two weeks to establish a trend."
-    if prev7 <= 0:
-        return f"Last 7d total training load ≈ {last7:.1f} (no comparable prior week)."
-    delta_pct = ((last7 - prev7) / prev7) * 100.0
-    direction = "up" if delta_pct > 5 else "down" if delta_pct < -5 else "stable"
-    return (
-        f"Last 7d total training load ≈ {last7:.1f}; prior 7d ≈ {prev7:.1f} "
-        f"({direction}, ~{delta_pct:+.1f}% vs prior week)."
-    )
+def _longest_streak_days(dates: list[date]) -> int:
+    if not dates:
+        return 0
+    uniq = sorted(set(dates))
+    best = 1
+    cur = 1
+    for i in range(1, len(uniq)):
+        if (uniq[i] - uniq[i - 1]).days == 1:
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 1
+    return best
 
 
 def _extract_json_object(text: str) -> dict[str, Any]:
@@ -217,31 +319,73 @@ class AICoachService:
         else:
             self._genai_client = genai.Client(api_key=self._api_key)
 
-    def build_context(self, activities: list[Any], daily_metrics: list[Any]) -> str:
-        """Structured text for LLM consumption: last 10 activities, 14d wellness, load trend."""
-        act_list = [a for a in activities if isinstance(a, dict)]
-        met_list = [m for m in daily_metrics if isinstance(m, dict)]
+    def build_context(
+        self,
+        garmin_activities: list[Any] | None = None,
+        garmin_metrics: list[Any] | None = None,
+        strava_activities: list[Any] | None = None,
+        *,
+        garmin_connected: bool = False,
+        strava_connected: bool = False,
+        strava_athlete_name: str | None = None,
+    ) -> str:
+        """Structured coach context: merged activities, weekly summary, Garmin wellness, patterns."""
+        g_list = [a for a in (garmin_activities or []) if isinstance(a, dict)]
+        s_list = [a for a in (strava_activities or []) if isinstance(a, dict)]
+        met_list = [m for m in (garmin_metrics or []) if isinstance(m, dict)]
 
-        act_sorted = sorted(act_list, key=_activity_sort_key, reverse=True)[:10]
+        merged = _merge_unified(g_list, s_list)
+        last15 = merged[:15]
 
         lines: list[str] = []
-        lines.append("=== RECENT ACTIVITIES (up to 10, newest first) ===")
-        for i, a in enumerate(act_sorted, 1):
-            st = a.get("start_time")
-            date_s = "—"
-            if isinstance(st, datetime):
-                date_s = st.date().isoformat()
-            elif isinstance(st, str):
-                date_s = st[:10]
-            elif isinstance(st, date):
-                date_s = st.isoformat()
+
+        # SECTION 1 — Athlete data sources
+        lines.append("=== ATHLETE DATA SOURCES ===")
+        g_status = "Garmin ✓" if garmin_connected else "Garmin not connected"
+        if strava_connected:
+            if strava_athlete_name and str(strava_athlete_name).strip():
+                st_status = f"Strava ✓ as {str(strava_athlete_name).strip()}"
+            else:
+                st_status = "Strava ✓"
+        else:
+            st_status = "Strava not connected"
+        lines.append(f"Connected sources: {g_status} | {st_status}")
+
+        # SECTION 2 — Recent activities (last 15, merged)
+        lines.append("")
+        lines.append("=== RECENT ACTIVITIES (last 15, merged, newest first) ===")
+        for u in last15:
+            ds = u.act_date.isoformat()
+            dur_min = int(round(u.duration_min))
+            dkm = u.distance_km
+            dkm_s = f"{dkm:.1f}" if dkm is not None else "—"
             lines.append(
-                f"{i}. {a.get('activity_type') or 'unknown'} | {a.get('activity_name') or 'unnamed'} | "
-                f"date={date_s} | duration={_fmt_duration(a.get('duration_seconds'))} | "
-                f"avg_HR={a.get('avg_heart_rate', '—')} | training_load={a.get('training_load', '—')}"
+                f"- {ds} {u.source} {u.type}: {dur_min}min, {dkm_s}km, "
+                f"avg HR {_fmt_hr(u.avg_hr)}bpm, effort {_fmt_effort(u.effort_0_5)}/5"
+            )
+        if not last15:
+            lines.append("(no activities in the loaded window)")
+
+        # SECTION 3 — Weekly load summary (last 4 calendar weeks, Mon–Sun)
+        lines.append("")
+        lines.append("=== WEEKLY LOAD SUMMARY (last 4 weeks) ===")
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        for i in range(4):
+            week_start = monday - timedelta(weeks=(3 - i))
+            week_end = week_start + timedelta(days=6)
+            in_week = [u for u in merged if week_start <= u.act_date <= week_end]
+            n = len(in_week)
+            total_h = sum(u.duration_min for u in in_week) / 60.0
+            tc: Counter[str] = Counter(u.type for u in in_week)
+            lines.append(
+                f"Week of {week_start.isoformat()}: {n} sessions, {total_h:.1f}h, "
+                f"types: {_week_type_summary(tc)}"
             )
 
-        # Daily metrics: last 14 calendar days by date descending
+        # SECTION 4 — Daily health metrics from Garmin (last 14 days)
+        lines.append("")
+        lines.append("=== DAILY HEALTH METRICS (Garmin, last 14 days, newest first) ===")
         dated: list[tuple[date, dict[str, Any]]] = []
         for m in met_list:
             d = _as_date(m.get("date"))
@@ -249,9 +393,6 @@ class AICoachService:
                 dated.append((d, m))
         dated.sort(key=lambda x: x[0], reverse=True)
         last14 = dated[:14]
-
-        lines.append("")
-        lines.append("=== DAILY WELLNESS (last 14 days, newest first) ===")
         for d, m in last14:
             lines.append(
                 f"{d.isoformat()}: sleep_score={m.get('sleep_score', '—')} | "
@@ -260,10 +401,35 @@ class AICoachService:
                 f"body_battery={m.get('body_battery_min', '—')}-{m.get('body_battery_max', '—')} | "
                 f"steps={m.get('steps', '—')} | RHR={m.get('resting_heart_rate', '—')}"
             )
+        if not last14:
+            lines.append("(no daily metrics available)")
 
+        # SECTION 5 — Notable patterns
         lines.append("")
-        lines.append("=== TRAINING LOAD TREND (approximate) ===")
-        lines.append(_weekly_load_trend_text(act_list))
+        lines.append("=== NOTABLE PATTERNS (computed from loaded activities) ===")
+        if merged:
+            mc = Counter(u.type for u in merged)
+            top_type, top_n = mc.most_common(1)[0]
+            lines.append(f"- Most frequent sport type: {top_type} ({top_n} sessions)")
+        else:
+            lines.append("- Most frequent sport type: —")
+        total_hours = sum(u.duration_min for u in merged) / 60.0
+        avg_week_h = total_hours / 4.0 if merged else 0.0
+        lines.append(f"- Avg weekly volume (hours, over last 4 weeks window): {avg_week_h:.1f}h")
+        streak = _longest_streak_days([u.act_date for u in merged])
+        lines.append(f"- Longest streak of consecutive training days: {streak} days")
+        hard_dates = [u.act_date for u in merged if u.is_hard]
+        if hard_dates:
+            last_hard = max(hard_dates)
+            days_since = (today - last_hard).days
+            lines.append(
+                f"- Days since last hard effort (Strava suffer >70 or Garmin aerobic TE >4): {days_since} days"
+            )
+        else:
+            lines.append(
+                "- Days since last hard effort: no qualifying session in loaded data "
+                "(Strava suffer_score >70 or Garmin aerobic_effect >4)"
+            )
 
         return "\n".join(lines)
 
@@ -344,11 +510,23 @@ class AICoachService:
 
     def analyze_training_load(
         self,
-        activities: list[Any],
-        daily_metrics: list[Any],
+        garmin_activities: list[Any] | None = None,
+        garmin_metrics: list[Any] | None = None,
+        strava_activities: list[Any] | None = None,
+        *,
+        garmin_connected: bool = False,
+        strava_connected: bool = False,
+        strava_athlete_name: str | None = None,
     ) -> dict[str, Any]:
         """JSON analysis: fatigue, readiness, observations, recommendations."""
-        ctx = self.build_context(activities, daily_metrics)
+        ctx = self.build_context(
+            garmin_activities=garmin_activities,
+            garmin_metrics=garmin_metrics,
+            strava_activities=strava_activities,
+            garmin_connected=garmin_connected,
+            strava_connected=strava_connected,
+            strava_athlete_name=strava_athlete_name,
+        )
         instruction = """Based on the athlete data below, analyze overtraining risk, recovery status,
 and readiness for hard training. Respond with ONLY a valid JSON object (no markdown fences) using exactly these keys:
 {

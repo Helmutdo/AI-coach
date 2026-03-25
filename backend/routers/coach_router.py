@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import ChatMessage, DailyMetrics, GarminActivity
-from orm_serializers import activity_to_dict, daily_metrics_to_dict
+from models.models import ChatMessage, DailyMetrics, GarminActivity, StravaActivity
+from orm_serializers import (
+    activity_to_dict,
+    daily_metrics_to_dict,
+    strava_activity_to_dict,
+)
 from services.ai_service import AICoachService
 from user_settings_service import get_or_create_user_settings
 from utils.encryption import get_plaintext_api_key
 
 router = APIRouter(prefix="/coach", tags=["coach"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 class ChatBody(BaseModel):
@@ -66,8 +73,18 @@ def _ai_failure_reply(exc: BaseException) -> tuple[str, bool]:
     return (f"AI request failed: {exc}", False)
 
 
+def _integration_flags(settings: Any) -> tuple[bool, bool, str | None]:
+    garmin_connected = bool(getattr(settings, "garmin_token_encrypted", None))
+    strava_connected = bool(getattr(settings, "strava_connected", False))
+    raw_name = getattr(settings, "strava_athlete_name", None)
+    strava_name = (str(raw_name).strip() if raw_name else "") or None
+    return garmin_connected, strava_connected, strava_name
+
+
 @router.post("/chat")
+@limiter.limit("20/minute")
 def coach_chat(
+    request: Request,
     body: ChatBody,
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
@@ -76,11 +93,28 @@ def coach_chat(
     settings = get_or_create_user_settings(db, uid)
     ai = _make_ai_service(settings)
 
+    garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     acts = (
         db.query(GarminActivity)
-        .filter(GarminActivity.user_id == uid)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= cutoff,
+        )
         .order_by(desc(GarminActivity.start_time), desc(GarminActivity.id))
-        .limit(20)
+        .limit(100)
+        .all()
+    )
+    strava_rows = (
+        db.query(StravaActivity)
+        .filter(
+            StravaActivity.user_id == uid,
+            StravaActivity.start_date >= cutoff,
+        )
+        .order_by(desc(StravaActivity.start_date))
+        .limit(100)
         .all()
     )
     metrics = (
@@ -91,19 +125,29 @@ def coach_chat(
         .all()
     )
     act_dicts = [activity_to_dict(a) for a in acts]
+    strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
     met_dicts = [daily_metrics_to_dict(m) for m in metrics]
-    context = ai.build_context(act_dicts, met_dicts)
+    context = ai.build_context(
+        garmin_activities=act_dicts,
+        garmin_metrics=met_dicts,
+        strava_activities=strava_dicts,
+        garmin_connected=garmin_connected,
+        strava_connected=strava_connected,
+        strava_athlete_name=strava_athlete_name,
+    )
 
-    prior = (
+    # Load the last 50 messages to avoid unbounded LLM context on long conversations.
+    recent = (
         db.query(ChatMessage)
         .filter(
             ChatMessage.user_id == uid,
             ChatMessage.conversation_id == body.conversation_id,
         )
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.desc())
+        .limit(50)
         .all()
     )
-    history = [{"role": m.role, "content": m.content} for m in prior]
+    history = [{"role": m.role, "content": m.content} for m in reversed(recent)]
 
     try:
         reply = ai.chat(body.message, context, history)
@@ -118,7 +162,8 @@ def coach_chat(
             role="user",
             content=body.message,
             context_snapshot={
-                "activities_loaded": len(act_dicts),
+                "garmin_activities_loaded": len(act_dicts),
+                "strava_activities_loaded": len(strava_dicts),
                 "metrics_loaded": len(met_dicts),
             },
         )
@@ -142,7 +187,9 @@ def coach_chat(
 
 
 @router.get("/analysis")
+@limiter.limit("10/minute")
 def coach_analysis(
+    request: Request,
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
 ) -> dict[str, Any]:
@@ -150,7 +197,10 @@ def coach_analysis(
     settings = get_or_create_user_settings(db, uid)
     ai = _make_ai_service(settings)
 
+    garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
+
     start = date.today() - timedelta(days=29)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
     metrics = (
         db.query(DailyMetrics)
         .filter(DailyMetrics.user_id == uid, DailyMetrics.date >= start)
@@ -159,17 +209,39 @@ def coach_analysis(
     )
     acts = (
         db.query(GarminActivity)
-        .filter(GarminActivity.user_id == uid)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= cutoff,
+        )
         .order_by(desc(GarminActivity.start_time))
-        .limit(200)
+        .limit(100)
+        .all()
+    )
+    strava_rows = (
+        db.query(StravaActivity)
+        .filter(
+            StravaActivity.user_id == uid,
+            StravaActivity.start_date >= cutoff,
+        )
+        .order_by(desc(StravaActivity.start_date))
+        .limit(100)
         .all()
     )
 
     act_dicts = [activity_to_dict(a) for a in acts]
+    strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
     met_dicts = [daily_metrics_to_dict(m) for m in metrics]
 
     try:
-        return ai.analyze_training_load(act_dicts, met_dicts)
+        return ai.analyze_training_load(
+            garmin_activities=act_dicts,
+            garmin_metrics=met_dicts,
+            strava_activities=strava_dicts,
+            garmin_connected=garmin_connected,
+            strava_connected=strava_connected,
+            strava_athlete_name=strava_athlete_name,
+        )
     except Exception as e:
         msg, _ = _ai_failure_reply(e)
         raise HTTPException(status_code=502, detail=msg) from e

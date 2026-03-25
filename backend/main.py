@@ -11,13 +11,19 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from sqlalchemy import text
 
-from database.database import init_db
-from routers import auth_router, coach_router, garmin_router, users_router
+from database.database import SessionLocal, init_db
+from routers import auth_router, coach_router, garmin_router, strava_router, users_router
 
 logger = logging.getLogger(__name__)
+
+limiter = Limiter(key_func=get_remote_address)
 
 _DEFAULT_CORS = (
     "http://localhost:3000,http://127.0.0.1:3000,"
@@ -69,9 +75,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Garmin AI Coach API", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _cors_env = os.environ.get("CORS_ORIGINS")
+_is_production = os.environ.get("ENVIRONMENT", "").lower() in ("production", "prod")
 if _cors_env is None:
+    if _is_production:
+        logger.warning(
+            "CORS_ORIGINS is not set in production — only localhost origins will be allowed. "
+            "Set CORS_ORIGINS to your frontend URL, e.g. https://your-app.vercel.app"
+        )
     _cors_origins = _parse_cors_origins(None)
 else:
     _cors_origins = _parse_cors_origins(_cors_env)
@@ -95,10 +109,17 @@ app.add_middleware(
 
 app.include_router(users_router.router, prefix="/api")
 app.include_router(auth_router.router, prefix="/api")
+app.include_router(strava_router.router, prefix="/api")
 app.include_router(garmin_router.router, prefix="/api")
 app.include_router(coach_router.router, prefix="/api")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    db_status = "ok"
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+    except Exception:
+        db_status = "unavailable"
+    return {"status": "ok", "database": db_status}

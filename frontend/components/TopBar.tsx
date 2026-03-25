@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { getGarminStatus } from "@/lib/api";
+import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 
 function formatSync(d: Date | null): string {
@@ -13,23 +13,45 @@ function formatSync(d: Date | null): string {
 }
 
 export function TopBar() {
-  const { garminConnected, lastSync, setGarminConnected, userId } = useAppStore();
+  const { garminConnected, stravaConnected, lastSync, setStatusFromApi, userId } = useAppStore();
+  const fitnessConnected = garminConnected || stravaConnected;
 
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     (async () => {
       try {
-        const s = await getGarminStatus();
-        if (!cancelled) setGarminConnected(s.active);
+        const [g, st, ai] = await Promise.all([
+          getGarminStatus(),
+          getStravaStatus(),
+          getAIStatus(),
+        ]);
+        if (!cancelled) {
+          setStatusFromApi({
+            garminActive: g.active,
+            stravaConnected: st.connected,
+            stravaOAuthConfigured: st.oauth_configured ?? true,
+            stravaAthleteName: st.athlete_name,
+            aiConfigured: ai.configured,
+            aiProvider: ai.provider ?? null,
+          });
+        }
       } catch {
-        if (!cancelled) setGarminConnected(false);
+        if (!cancelled) {
+          setStatusFromApi({
+            garminActive: false,
+            stravaConnected: false,
+            stravaAthleteName: null,
+            aiConfigured: false,
+            aiProvider: null,
+          });
+        }
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [setGarminConnected, userId]);
+  }, [setStatusFromApi, userId]);
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950/80 px-6 backdrop-blur">
@@ -37,10 +59,10 @@ export function TopBar() {
         <span className="text-zinc-400">Sync status:</span>{" "}
         <span
           className={
-            garminConnected ? "font-medium text-emerald-400" : "font-medium text-amber-400"
+            fitnessConnected ? "font-medium text-emerald-400" : "font-medium text-amber-400"
           }
         >
-          {garminConnected ? "Connected" : "Not connected"}
+          {fitnessConnected ? "Connected" : "Not connected"}
         </span>
       </div>
       <div className="text-sm text-zinc-500">

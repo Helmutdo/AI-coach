@@ -1,0 +1,45 @@
+                                                                                                    
+  ---                                                                                                 
+  Cambios aplicados por Claude                                                                           
+                                                                                                      
+  Seguridad (Critico)                                                                                 
+                                                                                                      
+  - .env.example — Eliminadas las credenciales reales de Garmin, password e ENCRYPTION_KEY que estaban
+   hardcodeadas. El archivo ahora es solo template.                                                   
+  - user_settings_service.py — El except RuntimeError: pass silencioso fue reemplazado por un         
+  logger.warning() explicito cuando ENCRYPTION_KEY no esta configurada.                               
+  
+  Frontend                                                                                            
+                                                                                                    
+  - middleware.ts — Si el backend no responde (error de red), ya NO redirige a /onboarding. Antes     
+  cualquier error del servidor mandaba al usuario al onboarding en loop. Ahora simplemente deja pasar
+  la request.                                                                                         
+  - AppStatusBootstrap.tsx — El catch ahora hace console.error() con el error real en lugar de      
+  swallowarlo en silencio.                                                                            
+  
+  Performance                                                                                         
+                                                                                                    
+  - coach_router.py — Las queries de actividades Garmin y Strava en /chat y /analysis ahora tienen    
+  .limit(100). Antes no tenian limite y podian cargar miles de registros.
+  - coach_router.py — El historial de chat para el contexto LLM ahora esta limitado a los ultimos 50  
+  mensajes (antes cargaba todos sin limite).                                                          
+  
+  Rate Limiting (nuevo)                                                                               
+                                                                                                    
+  - Agregado slowapi a requirements.txt e instalado en el venv.                                       
+  - /api/coach/chat: 20 req/min por IP
+  - /api/coach/analysis: 10 req/min por IP                                                            
+  - /api/garmin/sync: 5 req/min por IP                                                              
+  - /api/strava/sync: 5 req/min por IP                                                                
+                                                                                                      
+  Observabilidad
+                                                                                                      
+  - /health — Ahora verifica conectividad con la base de datos: {"status": "ok", "database":          
+  "ok|unavailable"}
+  - strava_router.py — El fallo silencioso al fetchear el perfil del atleta de Strava ahora loguea un 
+  warning con el error.                                                                               
+  
+  CORS                                                                                                
+                                                                                                    
+  - main.py — Si ENVIRONMENT=production y no se configuro CORS_ORIGINS, loguea un warning claro en    
+  lugar de fallar silenciosamente.

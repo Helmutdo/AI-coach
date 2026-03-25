@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from models.models import DailyMetrics, GarminActivity
+from models.models import DailyMetrics, GarminActivity, StravaActivity
 
 
 def activity_to_dict(a: GarminActivity) -> dict[str, Any]:
@@ -22,6 +22,22 @@ def activity_to_dict(a: GarminActivity) -> dict[str, Any]:
         "training_load": a.training_load,
         "aerobic_effect": a.aerobic_effect,
         "anaerobic_effect": a.anaerobic_effect,
+        "raw_data": a.raw_data,
+        "synced_at": a.synced_at,
+    }
+
+
+def strava_activity_to_dict(a: StravaActivity) -> dict[str, Any]:
+    return {
+        "strava_id": a.strava_id,
+        "name": a.name,
+        "sport_type": a.sport_type,
+        "start_time": a.start_date,
+        "elapsed_time": a.elapsed_time,
+        "moving_time": a.moving_time,
+        "distance": a.distance,
+        "avg_heartrate": a.avg_heartrate,
+        "suffer_score": a.suffer_score,
         "raw_data": a.raw_data,
         "synced_at": a.synced_at,
     }

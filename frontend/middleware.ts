@@ -40,7 +40,7 @@ export default auth(async (req) => {
   const base = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
 
   try {
-    const [gRes, aiRes] = await Promise.all([
+    const [gRes, aiRes, stRes] = await Promise.all([
       fetch(`${base}/api/auth/garmin/status`, {
         headers: { "X-User-Id": backendUserId },
         cache: "no-store",
@@ -49,14 +49,20 @@ export default auth(async (req) => {
         headers: { "X-User-Id": backendUserId },
         cache: "no-store",
       }),
+      fetch(`${base}/api/strava/status`, {
+        headers: { "X-User-Id": backendUserId },
+        cache: "no-store",
+      }),
     ]);
 
     const g = (await gRes.json()) as { active?: boolean };
     const ai = (await aiRes.json()) as { configured?: boolean };
+    const st = (await stRes.json()) as { connected?: boolean };
 
     const garminOk = g.active === true;
+    const stravaOk = st.connected === true;
     const aiOk = ai.configured === true;
-    const onboardingDone = garminOk && aiOk;
+    const onboardingDone = (garminOk || stravaOk) && aiOk;
 
     if (!onboardingDone) {
       if (isAppRoute(pathname) && pathname !== "/onboarding") {
@@ -69,9 +75,9 @@ export default auth(async (req) => {
       return Response.redirect(new URL("/dashboard", req.url));
     }
   } catch {
-    if (isAppRoute(pathname) && pathname !== "/onboarding") {
-      return Response.redirect(new URL("/onboarding", req.url));
-    }
+    // Backend unreachable — don't know the user's config status.
+    // Let the request through rather than redirecting to onboarding on every
+    // transient server error. The UI will show its own "unavailable" state.
   }
 });
 

@@ -19,6 +19,7 @@ import {
   getGarminActivities,
   getGarminStatus,
   getGarminSummary,
+  getStravaStatus,
   type CoachAnalysis,
   type GarminActivityRow,
   type GarminSummaryResponse,
@@ -66,7 +67,7 @@ function aggregateDuration14(activities: GarminActivityRow[]) {
 }
 
 export default function DashboardPage() {
-  const { setStatusFromApi, userId } = useAppStore();
+  const { setStatusFromApi, userId, stravaConnected } = useAppStore();
   const [summary, setSummary] = useState<GarminSummaryResponse | null>(null);
   const [activities, setActivities] = useState<GarminActivityRow[]>([]);
   const [garminOk, setGarminOk] = useState<boolean | null>(null);
@@ -80,14 +81,18 @@ export default function DashboardPage() {
     if (!userId) return;
     setLoadErr(null);
     try {
-      const [st, ai, s, acts] = await Promise.all([
+      const [st, strava, ai, s, acts] = await Promise.all([
         getGarminStatus(),
+        getStravaStatus(),
         getAIStatus(),
         getGarminSummary(),
         getGarminActivities({ limit: 200 }),
       ]);
       setStatusFromApi({
         garminActive: st.active,
+        stravaConnected: strava.connected,
+        stravaOAuthConfigured: strava.oauth_configured ?? true,
+        stravaAthleteName: strava.athlete_name,
         aiConfigured: ai.configured,
         aiProvider: ai.provider,
       });
@@ -133,9 +138,9 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      {garminOk === false && (
+      {garminOk === false && !stravaConnected && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          Connect your Garmin account in{" "}
+          Connect Garmin or Strava in{" "}
           <Link href="/settings" className="font-medium text-emerald-400 underline">
             Settings
           </Link>{" "}

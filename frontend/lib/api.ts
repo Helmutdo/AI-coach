@@ -238,6 +238,7 @@ export type DeleteUserDataResponse = {
   status: string;
   deleted: {
     activities: number;
+    strava_activities?: number;
     daily_metrics: number;
     chat_messages: number;
   };
@@ -279,6 +280,49 @@ export async function getGarminDailyMetrics(params?: {
 
 export async function getGarminSummary(): Promise<GarminSummaryResponse> {
   const { data } = await api.get<GarminSummaryResponse>("/api/garmin/summary");
+  return data;
+}
+
+// ——— Strava ———
+
+export type StravaStatusResponse = {
+  connected: boolean;
+  athlete_name: string | null;
+  athlete_id: string | null;
+  last_sync: string | null;
+  activity_count: number;
+  /** False when backend .env is missing STRAVA_CLIENT_ID / SECRET / REDIRECT_URI */
+  oauth_configured?: boolean;
+};
+
+export async function getStravaConnect(): Promise<{ auth_url: string }> {
+  const { data } = await api.get<{ auth_url: string }>("/api/strava/connect");
+  return data;
+}
+
+export async function getStravaStatus(): Promise<StravaStatusResponse> {
+  const { data } = await api.get<StravaStatusResponse>("/api/strava/status");
+  return data;
+}
+
+export async function deleteStravaDisconnect(): Promise<{ status: string }> {
+  const { data } = await api.delete<{ status: string }>("/api/strava/disconnect");
+  return data;
+}
+
+export type StravaSyncResponse = {
+  synced: number;
+  updated: number;
+  errors: string[];
+};
+
+export async function postStravaSync(body?: {
+  days_back?: number;
+}): Promise<StravaSyncResponse> {
+  const { data } = await api.post<StravaSyncResponse>(
+    "/api/strava/sync",
+    body ?? { days_back: 60 }
+  );
   return data;
 }
 

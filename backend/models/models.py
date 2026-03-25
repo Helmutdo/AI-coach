@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -64,6 +65,12 @@ class UserSettings(Base):
     ai_provider: Mapped[str] = mapped_column(String(32), nullable=False, default="anthropic")
     ai_api_key_encrypted: Mapped[str] = mapped_column(Text, nullable=False, default="")
     garmin_token_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    strava_access_token_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    strava_refresh_token_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    strava_token_expires_at: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    strava_athlete_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    strava_athlete_name: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    strava_connected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -108,6 +115,47 @@ class GarminActivity(Base):
     anaerobic_effect: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     raw_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StravaActivity(Base):
+    """Synced activity from Strava API."""
+
+    __tablename__ = "strava_activities"
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "strava_id", name="uq_strava_activity_user_strava_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    strava_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(1024), nullable=False)
+    sport_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    start_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    elapsed_time: Mapped[int] = mapped_column(Integer, nullable=False)
+    distance: Mapped[float] = mapped_column(Float, nullable=False)
+    moving_time: Mapped[int] = mapped_column(Integer, nullable=False)
+    total_elevation_gain: Mapped[float] = mapped_column(Float, nullable=False)
+    avg_heartrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_heartrate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    weighted_avg_watts: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    suffer_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    avg_cadence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    avg_speed: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    pr_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    achievement_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    kudos_count: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    map_polyline: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    raw_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class DailyMetrics(Base):
