@@ -37,6 +37,11 @@ export default function CoachPage() {
       sessionStorage.setItem(STORAGE_KEY, id);
     }
     setCid(id);
+    const prefill = sessionStorage.getItem("coach_prefill");
+    if (prefill) {
+      setInput(prefill);
+      sessionStorage.removeItem("coach_prefill");
+    }
   }, []);
 
   useEffect(() => {
