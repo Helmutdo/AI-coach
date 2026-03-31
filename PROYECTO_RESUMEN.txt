@@ -1,0 +1,161 @@
+# Garmin Trainer — Resumen del Proyecto
+
+## Descripción
+Plataforma full-stack de analítica deportiva para atletas de resistencia. Integra datos de Garmin Connect y Strava con un coach de IA (Claude, GPT-4o o Gemini) que analiza el entrenamiento y responde preguntas personalizadas.
+
+---
+
+## Stack Tecnológico
+
+**Backend — FastAPI (Python)**
+- FastAPI + Uvicorn (ASGI)
+- SQLAlchemy ORM + SQLite (dev) / PostgreSQL (prod)
+- `garminconnect` — integración con Garmin Connect vía Garth OAuth
+- `httpx` — cliente async para Strava API
+- Anthropic / OpenAI / Google AI — multi-provider AI
+- Fernet encryption — cifrado de tokens y API keys
+- `slowapi` — rate limiting
+
+**Frontend — Next.js 14 (TypeScript)**
+- Next.js App Router + React 18
+- NextAuth v5 — autenticación con Google OAuth
+- Zustand — state management
+- Recharts — gráficos
+- TailwindCSS
+
+---
+
+## Estructura de Directorios
+
+```
+garmin-trainer/
+├── backend/
+│   ├── main.py                # Entrada, CORS, middleware
+│   ├── models/models.py       # ORM: User, UserSettings, Activities, Metrics, Chat
+│   ├── routers/
+│   │   ├── auth_router.py     # Garmin login, config IA
+│   │   ├── users_router.py    # Registro/eliminación de usuario
+│   │   ├── garmin_router.py   # Sync y lectura Garmin
+│   │   ├── strava_router.py   # OAuth y sync Strava
+│   │   └── coach_router.py    # Chat IA, análisis
+│   ├── services/
+│   │   ├── garmin_service.py
+│   │   ├── strava_service.py
+│   │   ├── sync_service.py
+│   │   └── ai_service.py
+│   └── utils/encryption.py
+│
+└── frontend/
+    └── app/
+        ├── (app)/dashboard/   # Gráficos y métricas
+        ├── (app)/coach/       # Chat con IA
+        ├── (app)/activities/  # Lista de actividades
+        ├── (app)/settings/    # Config Garmin/Strava/IA
+        └── onboarding/        # Flujo inicial
+```
+
+---
+
+## Modelos de Base de Datos
+
+| Modelo | Campos clave |
+|--------|-------------|
+| `User` | `google_id`, `email`, `name`, `avatar_url` |
+| `UserSettings` | `garmin_token_encrypted`, `strava_*_token_encrypted`, `ai_provider`, `ai_api_key_encrypted` |
+| `GarminActivity` | `activity_type`, `duration`, `distance`, `avg_hr`, `training_load`, `aerobic_effect` |
+| `StravaActivity` | `sport_type`, `elapsed_time`, `distance`, `avg_watts`, `suffer_score`, `map_polyline` |
+| `DailyMetrics` | `resting_hr`, `sleep_duration`, `sleep_score`, `vo2max`, `hrv_status`, `body_battery` |
+| `ChatMessage` | `role`, `content`, `context_snapshot` (snapshot de métricas en el momento) |
+
+---
+
+## Endpoints API (Backend puerto 8000)
+
+```
+POST   /auth/garmin/login          # Conectar cuenta Garmin
+GET    /auth/garmin/status         # Estado conexión Garmin
+POST   /auth/ai/configure          # Configurar provider IA + API key
+POST   /users/me                   # Upsert perfil (desde Google OAuth)
+DELETE /users/me/data              # Borrar todos los datos sincronizados
+
+POST   /garmin/sync                # Sync actividades y métricas (rate: 5/min)
+GET    /garmin/activities          # Listar actividades Garmin
+GET    /garmin/daily-metrics       # Métricas diarias (sueño, estrés, HRV)
+GET    /garmin/summary             # Resumen semanal/mensual
+
+GET    /strava/connect             # URL OAuth Strava
+GET    /strava/callback            # Callback OAuth Strava
+POST   /strava/sync                # Sync actividades Strava (60 días)
+GET    /strava/status              # Estado + perfil atleta Strava
+
+POST   /coach/chat                 # Mensaje al coach IA
+GET    /coach/analysis             # Análisis IA (7/30/90 días)
+GET    /coach/history              # Historial de conversación
+```
+
+---
+
+## Variables de Entorno
+
+**Backend (`.env`)**
+```
+DATABASE_URL=sqlite:///./garmin_coach.db
+ENCRYPTION_KEY=<fernet-key>
+CORS_ORIGINS=http://localhost:3000
+STRAVA_CLIENT_ID=
+STRAVA_CLIENT_SECRET=
+STRAVA_REDIRECT_URI=http://localhost:8000/api/strava/callback
+STRAVA_FRONTEND_REDIRECT=http://localhost:3000/settings
+# AI providers (opcionales, también configurables por usuario en DB)
+ANTHROPIC_API_KEY=
+OPENAI_API_KEY=
+GOOGLE_API_KEY=
+AI_PROVIDER=anthropic
+```
+
+**Frontend (`.env.local`)**
+```
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+AUTH_SECRET=
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+```
+
+---
+
+## Flujo de Autenticación
+1. Usuario hace login con **Google OAuth** en Next.js (NextAuth)
+2. Frontend sincroniza perfil con backend vía `POST /users/me` — el `google_id` actúa como identificador
+3. Todas las requests autenticadas envían `X-User-Id` header al backend
+4. Garmin y Strava se conectan por separado en Settings, con tokens cifrados en DB
+
+---
+
+## Características del Coach IA
+- Multi-provider: Anthropic `claude-sonnet-4`, OpenAI `gpt-4o`, Google `gemini-2.0-flash`
+- Contexto: últimos 30-90 días de actividades + métricas diarias inyectadas al prompt
+- System prompt: coach experto en deportes de resistencia
+- Análisis automático sin chat: endpoint `/coach/analysis`
+- Historial persistido por `conversation_id`
+
+---
+
+## Analytics del Dashboard
+- **PMC** (Performance Management Chart): CTL, ATL, TSB
+- Distribución de zonas de frecuencia cardíaca
+- Volumen semanal por deporte
+- Training Stress Score (TSS)
+- Métricas de sueño y recuperación
+- Carga aguda vs crónica
+
+---
+
+## Desarrollo Local
+```bash
+npm run dev          # Inicia backend (8000) + frontend (3000)
+```
+
+## Estado Actual (rama `main`, 2026-03-31)
+- Commits recientes: fixes en Strava API, mejoras de UX en dashboard, auditoría de IA, auth con Google Console, fixes de seguridad (credenciales, rate limiting, observabilidad)
+- Base de datos: SQLite por defecto
+- Tests: pytest en `backend/tests/`
