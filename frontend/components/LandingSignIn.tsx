@@ -35,10 +35,10 @@ export function LandingSignIn() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950 px-6">
       <div className="mx-auto max-w-md text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-zinc-50 sm:text-5xl">
-          Garmin AI Coach
+           AI Coach
         </h1>
         <p className="mt-4 text-lg text-zinc-400">
-          Your personal training coach, powered by your Garmin data
+          Your personal training coach, powered by your Garmin & Strava data
         </p>
 
         <button

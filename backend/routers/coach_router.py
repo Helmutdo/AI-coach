@@ -247,6 +247,168 @@ def coach_analysis(
         raise HTTPException(status_code=502, detail=msg) from e
 
 
+@router.get("/daily-brief")
+@limiter.limit("10/minute")
+def coach_daily_brief(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, str]:
+    """Generate a personalized daily training brief with status classification."""
+    uid = uuid.UUID(user_id)
+    settings = get_or_create_user_settings(db, uid)
+    ai = _make_ai_service(settings)
+
+    garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    acts = (
+        db.query(GarminActivity)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= cutoff,
+        )
+        .order_by(desc(GarminActivity.start_time))
+        .limit(20)
+        .all()
+    )
+    strava_rows = (
+        db.query(StravaActivity)
+        .filter(
+            StravaActivity.user_id == uid,
+            StravaActivity.start_date >= cutoff,
+        )
+        .order_by(desc(StravaActivity.start_date))
+        .limit(20)
+        .all()
+    )
+    today_metric = (
+        db.query(DailyMetrics)
+        .filter(DailyMetrics.user_id == uid)
+        .order_by(desc(DailyMetrics.date))
+        .first()
+    )
+
+    act_dicts = [activity_to_dict(a) for a in acts]
+    strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
+    met_dicts = [daily_metrics_to_dict(today_metric)] if today_metric else []
+
+    # Determine status from data (rule-based, instant)
+    status = "base"
+    if today_metric:
+        hrv = getattr(today_metric, "hrv_status", None)
+        body_min = getattr(today_metric, "body_battery_min", None)
+        sleep_score = getattr(today_metric, "sleep_score", None)
+        if hrv in ("Low", "Poor", "Unbalanced") or (body_min is not None and body_min < 20):
+            status = "recovery"
+        elif sleep_score is not None and sleep_score > 80:
+            recent_load = sum((a.training_load or 0) for a in acts[:2])
+            status = "peak" if recent_load < 50 else "quality"
+    if status == "base":
+        recent_load = sum((a.training_load or 0) for a in acts[:2])
+        if recent_load > 150:
+            status = "recovery"
+        elif recent_load > 80:
+            status = "quality"
+
+    context = ai.build_context(
+        garmin_activities=act_dicts,
+        garmin_metrics=met_dicts,
+        strava_activities=strava_dicts,
+        garmin_connected=garmin_connected,
+        strava_connected=strava_connected,
+        strava_athlete_name=strava_athlete_name,
+    )
+
+    brief_prompt = (
+        "Generate a 2-sentence daily training brief for a triathlete. "
+        "First sentence: today's recommended focus based on the data. "
+        "Second sentence: one specific data-driven insight from their metrics. "
+        "Be direct and specific. No fluff. No greetings. Max 50 words total."
+    )
+
+    try:
+        brief = ai.chat(brief_prompt, context, [])
+    except Exception as e:
+        msg, _ = _ai_failure_reply(e)
+        raise HTTPException(status_code=502, detail=msg) from e
+
+    return {"brief": brief, "status": status}
+
+
+@router.get("/greeting")
+@limiter.limit("10/minute")
+def coach_greeting(
+    request: Request,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, str]:
+    """Generate an ephemeral personalized greeting for the coach page."""
+    uid = uuid.UUID(user_id)
+    settings = get_or_create_user_settings(db, uid)
+    ai = _make_ai_service(settings)
+
+    garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    acts = (
+        db.query(GarminActivity)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= cutoff,
+        )
+        .order_by(desc(GarminActivity.start_time))
+        .limit(20)
+        .all()
+    )
+    strava_rows = (
+        db.query(StravaActivity)
+        .filter(
+            StravaActivity.user_id == uid,
+            StravaActivity.start_date >= cutoff,
+        )
+        .order_by(desc(StravaActivity.start_date))
+        .limit(20)
+        .all()
+    )
+    today_metric = (
+        db.query(DailyMetrics)
+        .filter(DailyMetrics.user_id == uid)
+        .order_by(desc(DailyMetrics.date))
+        .first()
+    )
+
+    act_dicts = [activity_to_dict(a) for a in acts]
+    strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
+    met_dicts = [daily_metrics_to_dict(today_metric)] if today_metric else []
+
+    context = ai.build_context(
+        garmin_activities=act_dicts,
+        garmin_metrics=met_dicts,
+        strava_activities=strava_dicts,
+        garmin_connected=garmin_connected,
+        strava_connected=strava_connected,
+        strava_athlete_name=strava_athlete_name,
+    )
+
+    greeting_prompt = (
+        "Generate a short, friendly greeting (2-3 sentences max) for a triathlete "
+        "opening their coaching app. Reference 1-2 specific data points from their "
+        "recent training if available. End with one open question to start the conversation. "
+        "Be warm and encouraging. Do not use markdown formatting."
+    )
+
+    try:
+        message = ai.chat(greeting_prompt, context, [])
+    except Exception as e:
+        msg, _ = _ai_failure_reply(e)
+        raise HTTPException(status_code=502, detail=msg) from e
+
+    return {"message": message}
+
+
 @router.get("/history")
 def coach_history(
     db: Session = Depends(get_db),

@@ -372,6 +372,11 @@ export async function getCoachHistory(): Promise<ChatMessageRow[]> {
   return data;
 }
 
+export async function getCoachGreeting(): Promise<{ message: string }> {
+  const { data } = await api.get<{ message: string }>("/api/coach/greeting");
+  return data;
+}
+
 export async function postCoachChat(
   body: CoachChatBody
 ): Promise<CoachChatResponse> {

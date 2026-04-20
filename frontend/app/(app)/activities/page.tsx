@@ -8,6 +8,7 @@ import {
   type StravaActivityRow,
 } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
+import { getSportColor } from "@/lib/sportColors";
 
 type UnifiedActivity =
   | { source: "garmin"; data: GarminActivityRow }
@@ -190,10 +191,12 @@ export default function ActivitiesPage() {
             {filtered.map((u) => {
               const id = getId(u);
               const open = expanded === id;
+              const sportColor = getSportColor(getType(u));
               return (
                 <Fragment key={id}>
                   <tr
                     className="cursor-pointer bg-zinc-950/50 hover:bg-zinc-900/80"
+                    style={{ borderLeft: `3px solid ${sportColor.dot}` }}
                     onClick={() => setExpanded(open ? null : id)}
                   >
                     <td className="px-3 py-3 text-zinc-500">{open ? "▼" : "▶"}</td>
@@ -209,7 +212,14 @@ export default function ActivitiesPage() {
                         {u.source === "garmin" ? "Garmin" : "Strava"}
                       </span>
                     </td>
-                    <td className="px-3 py-3 text-zinc-200">{getType(u)}</td>
+                    <td className="px-3 py-3">
+                      <span
+                        className="rounded-full px-2 py-0.5 text-xs font-medium"
+                        style={{ background: `${sportColor.dot}22`, color: sportColor.dot }}
+                      >
+                        {getType(u)}
+                      </span>
+                    </td>
                     <td className="px-3 py-3 text-zinc-300">{fmtDuration(getDuration(u))}</td>
                     <td className="px-3 py-3 text-zinc-300">{fmtDist(getDistance(u))}</td>
                     <td className="px-3 py-3 text-zinc-300">{getAvgHR(u) ?? "—"}</td>

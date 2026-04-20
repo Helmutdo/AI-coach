@@ -39,6 +39,8 @@ export default function OnboardingPage() {
   const stravaConnected = useAppStore((s) => s.stravaConnected);
   const stravaAthleteName = useAppStore((s) => s.stravaAthleteName);
   const setStatusFromApi = useAppStore((s) => s.setStatusFromApi);
+  const setGarminConnected = useAppStore((s) => s.setGarminConnected);
+  const setAiConfigured = useAppStore((s) => s.setAiConfigured);
 
   const [step, setStep] = useState(1);
   const [fitnessProvider, setFitnessProvider] = useState<FitnessProviderStep>("choice");
@@ -68,6 +70,22 @@ export default function OnboardingPage() {
       /* ignore */
     }
   }, [userId, setStatusFromApi]);
+
+  function handleSkipFitness() {
+    try {
+      localStorage.setItem("onboarding_skipped_garmin", "true");
+    } catch { /* ignore */ }
+    setGarminConnected(false);
+    setStep(3);
+  }
+
+  function handleSkipAI() {
+    try {
+      localStorage.setItem("onboarding_skipped_ai", "true");
+    } catch { /* ignore */ }
+    setAiConfigured(false);
+    router.push("/dashboard");
+  }
 
   if (status === "loading") {
     return (
@@ -168,6 +186,15 @@ export default function OnboardingPage() {
                     <span className="mt-1 text-sm text-zinc-500">Strava — connect with OAuth (no app password)</span>
                   </button>
                 </div>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={handleSkipFitness}
+                    className="text-sm text-gray-400 hover:text-gray-300"
+                  >
+                    Skip for now →
+                  </button>
+                </div>
               </>
             )}
 
@@ -227,7 +254,7 @@ export default function OnboardingPage() {
                 <p className="text-center text-sm text-zinc-500">
                   You can connect the other source later in Settings if you need both.
                 </p>
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-3">
                   <button
                     type="button"
                     disabled={!anyFitnessConnected}
@@ -236,6 +263,13 @@ export default function OnboardingPage() {
                   >
                     Next →
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleSkipFitness}
+                    className="text-sm text-gray-400 hover:text-gray-300"
+                  >
+                    Skip for now →
+                  </button>
                 </div>
               </>
             )}
@@ -243,15 +277,26 @@ export default function OnboardingPage() {
         )}
 
         {step === 3 && (
-          <AIProviderCard
-            userId={userId}
-            submitLabel="Start coaching →"
-            onSaved={async () => {
-              await refreshStatus();
-              router.push("/dashboard");
-              router.refresh();
-            }}
-          />
+          <div className="space-y-4">
+            <AIProviderCard
+              userId={userId}
+              submitLabel="Start coaching →"
+              onSaved={async () => {
+                await refreshStatus();
+                router.push("/dashboard");
+                router.refresh();
+              }}
+            />
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={handleSkipAI}
+                className="text-sm text-gray-400 hover:text-gray-300"
+              >
+                Skip — I'll configure this later
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>

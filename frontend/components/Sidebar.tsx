@@ -17,7 +17,7 @@ export function Sidebar() {
     <aside className="flex w-56 shrink-0 flex-col border-r border-zinc-800 bg-zinc-950">
       <div className="border-b border-zinc-800 px-4 py-5">
         <Link href="/dashboard" className="text-lg font-semibold tracking-tight text-zinc-100">
-          APEX TRI
+          AI Coach | Trialthon
         </Link>
         <p className="mt-1 text-xs text-zinc-500">Training & recovery</p>
       </div>

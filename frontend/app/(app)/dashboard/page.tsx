@@ -23,6 +23,7 @@ import {
   getGarminActivities,
   getGarminDailyMetrics,
   getStravaActivities,
+  getStravaConnect,
   postGarminSync,
   postStravaSync,
   type CoachAnalysis,
@@ -31,6 +32,7 @@ import {
   type StravaActivityRow,
 } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
+import { getSportColor } from "@/lib/sportColors";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -121,6 +123,23 @@ function monOf(d: Date): Date {
   m.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
   m.setHours(0, 0, 0, 0);
   return m;
+}
+
+function relativeTime(date: Date): string {
+  const h = (Date.now() - date.getTime()) / 3_600_000;
+  if (h < 1 / 60) return "Just now";
+  if (h < 1) return `${Math.round(h * 60)}m ago`;
+  if (h < 24) return `${Math.round(h)}h ago`;
+  if (h < 48) return "Yesterday";
+  return `${Math.round(h / 24)}d ago`;
+}
+
+function weekStart(offset = 0): Date {
+  const d = new Date();
+  const day = d.getDay();
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day) - offset * 7);
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
 function normalizeSport(raw: string | null | undefined): SportType {
@@ -343,6 +362,200 @@ function Skel({ className = "" }: { className?: string }) {
   return <div className={`animate-pulse rounded-lg bg-zinc-800 ${className}`} />;
 }
 
+// ─── Insight Bar ──────────────────────────────────────────────────────────────
+
+function InsightBar({
+  text,
+  color = "zinc",
+}: {
+  text: string;
+  color?: "green" | "amber" | "red" | "zinc" | "blue";
+}) {
+  const palette: Record<string, string> = {
+    green: "border-emerald-700/40 bg-emerald-900/20 text-emerald-300",
+    amber: "border-amber-700/40 bg-amber-900/20 text-amber-300",
+    red:   "border-red-700/40 bg-red-900/20 text-red-300",
+    zinc:  "border-zinc-700/40 bg-zinc-800/40 text-zinc-400",
+    blue:  "border-blue-700/40 bg-blue-900/20 text-blue-300",
+  };
+  return (
+    <p className={`rounded-lg border px-3 py-2 text-xs leading-snug ${palette[color]}`}>
+      {text}
+    </p>
+  );
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function SyncToast({
+  message,
+  totalSynced,
+  onDismiss,
+}: {
+  message: string;
+  totalSynced: number;
+  onDismiss: () => void;
+}) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 6000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+
+  function goToCoach() {
+    const prompt = "I just synced my activities. How was my week?";
+    router.push(`/coach?prompt=${encodeURIComponent(prompt)}`);
+    onDismiss();
+  }
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 max-w-sm rounded-xl border border-green-700 bg-green-900 px-4 py-3 text-sm text-green-100 shadow-lg">
+      <div className="flex items-center justify-between gap-3">
+        <span>{message}</span>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="flex-shrink-0 text-green-400 hover:text-white"
+          aria-label="Dismiss"
+        >
+          ✕
+        </button>
+      </div>
+      {totalSynced > 0 && (
+        <button
+          type="button"
+          onClick={goToCoach}
+          className="mt-2 text-xs text-green-300 underline underline-offset-2 hover:text-white"
+        >
+          Ask your coach about this week →
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Onboarding Banners ───────────────────────────────────────────────────────
+
+function OnboardingBanners() {
+  const [showGarmin, setShowGarmin] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+
+  useEffect(() => {
+    try {
+      setShowGarmin(
+        localStorage.getItem("onboarding_skipped_garmin") === "true" &&
+        localStorage.getItem("banner_dismissed_garmin") !== "true",
+      );
+      setShowAI(
+        localStorage.getItem("onboarding_skipped_ai") === "true" &&
+        localStorage.getItem("banner_dismissed_ai") !== "true",
+      );
+    } catch { /* ignore */ }
+  }, []);
+
+  function dismissGarmin() {
+    try { localStorage.setItem("banner_dismissed_garmin", "true"); } catch { /* ignore */ }
+    setShowGarmin(false);
+  }
+
+  function dismissAI() {
+    try { localStorage.setItem("banner_dismissed_ai", "true"); } catch { /* ignore */ }
+    setShowAI(false);
+  }
+
+  if (!showGarmin && !showAI) return null;
+
+  return (
+    <div className="space-y-2">
+      {showGarmin && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-blue-700/50 bg-blue-900/20 px-4 py-3 text-sm">
+          <span className="text-blue-200">
+            Connect Garmin Connect to sync your training data —{" "}
+            <Link href="/settings" className="font-semibold underline underline-offset-2 hover:text-white">
+              Go to Settings
+            </Link>
+          </span>
+          <button
+            type="button"
+            onClick={dismissGarmin}
+            className="flex-shrink-0 text-blue-400 hover:text-white"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {showAI && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-emerald-700/50 bg-emerald-900/20 px-4 py-3 text-sm">
+          <span className="text-emerald-200">
+            Add an AI provider to chat with your coach —{" "}
+            <Link href="/settings" className="font-semibold underline underline-offset-2 hover:text-white">
+              Go to Settings
+            </Link>
+          </span>
+          <button
+            type="button"
+            onClick={dismissAI}
+            className="flex-shrink-0 text-emerald-400 hover:text-white"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Empty State ──────────────────────────────────────────────────────────────
+
+function EmptyState({
+  onSyncGarmin,
+  onConnectStrava,
+  syncing,
+}: {
+  onSyncGarmin: () => void;
+  onConnectStrava: () => void;
+  syncing: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/30 px-8 py-16 text-center">
+      <div className="mb-6 flex items-center gap-3 text-zinc-600">
+        <svg width="36" height="36" viewBox="0 0 36 36" fill="none" aria-hidden>
+          <circle cx="18" cy="5" r="3" stroke="currentColor" strokeWidth="1.5" />
+          <line x1="18" y1="8" x2="18" y2="18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="11" y1="13" x2="25" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="18" y1="18" x2="13" y2="28" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="18" y1="18" x2="23" y2="28" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+        <span className="text-xs uppercase tracking-widest">swim · bike · run</span>
+      </div>
+      <h2 className="text-xl font-semibold text-zinc-100">No training data yet</h2>
+      <p className="mt-2 max-w-sm text-sm text-zinc-400">
+        Connect Garmin or Strava and sync your activities to see your performance dashboard.
+      </p>
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        <button
+          type="button"
+          onClick={onSyncGarmin}
+          disabled={syncing}
+          className="rounded-xl bg-emerald-600 px-6 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:opacity-50"
+        >
+          {syncing ? "↻ Syncing…" : "Sync Garmin"}
+        </button>
+        <button
+          type="button"
+          onClick={onConnectStrava}
+          className="rounded-xl border border-orange-600 bg-orange-900/20 px-6 py-3 text-sm font-semibold text-orange-300 transition hover:bg-orange-900/40"
+        >
+          Connect Strava
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 function KPICard({
@@ -352,6 +565,8 @@ function KPICard({
   trend,
   loading,
   valueColor,
+  prevValue,
+  changePct,
 }: {
   label: string;
   value: string | number;
@@ -359,19 +574,40 @@ function KPICard({
   trend?: number | null;
   loading?: boolean;
   valueColor?: string;
+  prevValue?: string | number;
+  changePct?: number | null;
 }) {
   if (loading) return <Skel className="h-28" />;
+  const showCompare = prevValue !== undefined;
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 flex flex-col gap-1">
       <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">{label}</p>
       <p className="text-3xl font-black leading-none" style={{ color: valueColor ?? "#f4f4f5" }}>
         {value}
+        {showCompare && changePct != null && (
+          <span className={`ml-1.5 text-sm font-semibold ${changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {changePct >= 0 ? "↑" : "↓"}
+          </span>
+        )}
       </p>
-      {sub && <p className="text-xs text-zinc-400 leading-snug">{sub}</p>}
-      {trend != null && (
-        <p className={`text-xs font-semibold ${trend >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-          {trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(0)}% vs prev period
+      {showCompare ? (
+        <p className="text-xs text-zinc-500 leading-snug">
+          vs <span className="text-zinc-400 font-medium">{prevValue}</span> last week
+          {changePct != null && (
+            <span className={`ml-1 font-semibold ${changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              ({changePct >= 0 ? "+" : ""}{changePct.toFixed(0)}%)
+            </span>
+          )}
         </p>
+      ) : (
+        <>
+          {sub && <p className="text-xs text-zinc-400 leading-snug">{sub}</p>}
+          {trend != null && (
+            <p className={`text-xs font-semibold ${trend >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+              {trend >= 0 ? "▲" : "▼"} {Math.abs(trend).toFixed(0)}% vs prev period
+            </p>
+          )}
+        </>
       )}
     </div>
   );
@@ -379,9 +615,28 @@ function KPICard({
 
 // ─── Weekly TSS Chart ─────────────────────────────────────────────────────────
 
+function weekTSSInsight(data: WeekPoint[]): { text: string; color: "green" | "amber" | "zinc" } {
+  const thisWeek = data[data.length - 1]?.total ?? 0;
+  const lastWeek = data[data.length - 2]?.total ?? 0;
+  if (lastWeek === 0 || thisWeek === 0) return { text: `This week: ${thisWeek} TSS`, color: "zinc" };
+  const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+  const sign = pct >= 0 ? "+" : "";
+  if (pct >= 5 && pct <= 20) {
+    return { text: `This week: ${thisWeek} TSS — ${sign}${pct}% vs last week. Progressive overload ✓`, color: "green" };
+  }
+  if (pct > 20) {
+    return { text: `This week: ${thisWeek} TSS — ${sign}${pct}% vs last week. Big jump — monitor recovery`, color: "amber" };
+  }
+  if (pct <= -20) {
+    return { text: `This week: ${thisWeek} TSS — ${sign}${pct}% vs last week. Recovery week`, color: "amber" };
+  }
+  return { text: `This week: ${thisWeek} TSS — ${sign}${pct}% vs last week`, color: "zinc" };
+}
+
 function WeeklyTSSChart({ data, easyPct }: { data: WeekPoint[]; easyPct: number }) {
   const hardPct  = 100 - easyPct;
   const barColor = easyPct >= 75 ? CLR.fresh : easyPct >= 60 ? CLR.warn : CLR.danger;
+  const tssInsight = weekTSSInsight(data);
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-3">
@@ -428,6 +683,7 @@ function WeeklyTSSChart({ data, easyPct }: { data: WeekPoint[]; easyPct: number 
             : "⚠ Too much gray zone — polarize more"}
         </p>
       </div>
+      <InsightBar text={tssInsight.text} color={tssInsight.color} />
     </div>
   );
 }
@@ -516,14 +772,18 @@ function HRZonesChart({
     }));
   }, [activities, sportFilter]);
 
-  const z2pct   = zoneData[1]?.pct ?? 0;
-  const hardPct = (zoneData[3]?.pct ?? 0) + (zoneData[4]?.pct ?? 0);
-  const z3pct   = zoneData[2]?.pct ?? 0;
-  const insight =
-    z2pct > 60    ? "Great aerobic base work 🎯"
-    : hardPct > 20 ? "High intensity — monitor recovery ⚠️"
-    : z3pct > 30   ? "Too much gray zone — polarize more ⚠️"
-    : "Training distribution looks balanced";
+  const z2pct    = zoneData[1]?.pct ?? 0;
+  const hardPct  = (zoneData[3]?.pct ?? 0) + (zoneData[4]?.pct ?? 0);
+  const z3pct    = zoneData[2]?.pct ?? 0;
+  const aeroPct  = (zoneData[0]?.pct ?? 0) + z2pct;
+  const { insight, insightColor }: { insight: string; insightColor: "green" | "amber" | "zinc" } =
+    aeroPct > 75
+      ? { insight: `Great polarized training — ${aeroPct}% in aerobic base (Z1+Z2)`, insightColor: "green" }
+      : z3pct > 25
+      ? { insight: `Gray zone alert — ${z3pct}% in Z3. Consider going easier or harder.`, insightColor: "amber" }
+      : hardPct > 25
+      ? { insight: `High intensity week — ${hardPct}% in Z4+Z5. Monitor recovery closely.`, insightColor: "amber" }
+      : { insight: "Training distribution looks balanced", insightColor: "zinc" };
 
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-3">
@@ -549,7 +809,7 @@ function HRZonesChart({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="text-xs text-zinc-400">{insight}</p>
+      <InsightBar text={insight} color={insightColor} />
     </div>
   );
 }
@@ -645,7 +905,7 @@ function RecoveryPanel({
             <div className="flex items-center gap-2 min-w-0">
               <span
                 className="h-2 w-2 rounded-full flex-shrink-0"
-                style={{ background: SPORT[a.sport].bg }}
+                style={{ background: getSportColor(a.sport).dot }}
               />
               <span className="text-zinc-300 truncate">{a.name}</span>
               {a.isBrick && (
@@ -725,6 +985,17 @@ function PMCChart({ data }: { data: DayPMC[] }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {latest && (() => {
+        const tsb = latest.tsb;
+        const { text, color }: { text: string; color: "green" | "blue" | "zinc" | "amber" | "red" } =
+          tsb > 10   ? { text: `Form: Tapered — TSB ${tsb > 0 ? "+" : ""}${tsb.toFixed(0)}. Good for racing or testing.`, color: "green" }
+          : tsb > 0  ? { text: `Form: Fresh — TSB +${tsb.toFixed(0)}. Optimal for quality sessions.`, color: "green" }
+          : tsb > -10 ? { text: `Form: Neutral — TSB ${tsb.toFixed(0)}. Steady training.`, color: "blue" }
+          : tsb > -30 ? { text: `Form: Building — TSB ${tsb.toFixed(0)}. Normal fatigue, trust the process.`, color: "zinc" }
+          : { text: `Form: Overreaching risk — TSB ${tsb.toFixed(0)}. Consider a recovery day.`, color: "amber" };
+        return <InsightBar text={text} color={color} />;
+      })()}
     </div>
   );
 }
@@ -843,7 +1114,9 @@ export default function DashboardPage() {
   const [sportFilter, setSportFilter] = useState<SportFilter>("all");
   const [dateRange, setDateRange]     = useState<DateRange>(30);
   const [syncing, setSyncing]         = useState(false);
-  const [syncMsg, setSyncMsg]         = useState<string | null>(null);
+  const [toast, setToast]             = useState<string | null>(null);
+  const [totalSynced, setTotalSynced] = useState(0);
+  const [compareMode, setCompareMode] = useState<"current" | "compare">("current");
 
   const [garminActs,    setGarminActs]    = useState<GarminActivityRow[]>([]);
   const [stravaActs,    setStravaActs]    = useState<StravaActivityRow[]>([]);
@@ -948,23 +1221,71 @@ export default function DashboardPage() {
     };
   }, [merged, sportFiltered, sportFilter, cutoff, dateRange, dailyMetrics]);
 
+  // ── Last sync date ──
+  const lastSyncDate = useMemo(() => {
+    const dates: Date[] = [];
+    for (const a of garminActs) {
+      if (a.synced_at) dates.push(new Date(a.synced_at));
+    }
+    for (const a of stravaActs) {
+      if (a.synced_at) dates.push(new Date(a.synced_at));
+    }
+    return dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : null;
+  }, [garminActs, stravaActs]);
+
+  const syncStatus = useMemo(() => {
+    if (!lastSyncDate) return { text: "No data synced yet", dot: "gray" as const };
+    const h = (Date.now() - lastSyncDate.getTime()) / 3_600_000;
+    if (h > 24 * 7) return { text: `Data outdated — sync now (${relativeTime(lastSyncDate)})`, dot: "red" as const };
+    if (h > 24)     return { text: `Sync recommended (${relativeTime(lastSyncDate)})`, dot: "amber" as const };
+    return { text: `Last sync: ${relativeTime(lastSyncDate)}`, dot: "green" as const };
+  }, [lastSyncDate]);
+
+  // ── Week comparison KPIs ──
+  const weeklyKpis = useMemo(() => {
+    const thisStart = weekStart(0);
+    const lastStart = weekStart(1);
+    const thisActs  = merged.filter((a) => a.dateTime >= thisStart);
+    const lastActs  = merged.filter((a) => a.dateTime >= lastStart && a.dateTime < thisStart);
+    const tss  = (arr: MergedActivity[]) => Math.round(arr.reduce((s, a) => s + a.tss, 0));
+    const hrs  = (arr: MergedActivity[]) => +(arr.reduce((s, a) => s + a.durationSec, 0) / 3600).toFixed(1);
+    const thisTSS = tss(thisActs), lastTSS = tss(lastActs);
+    const thisH = hrs(thisActs),   lastH   = hrs(lastActs);
+    const pctChg = (cur: number, prev: number) =>
+      prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
+    return {
+      thisTSS, lastTSS, tssChange: pctChg(thisTSS, lastTSS),
+      thisH,   lastH,   hrsChange: pctChg(thisH,   lastH),
+      thisSessions: thisActs.length, lastSessions: lastActs.length,
+      sessionsChange: pctChg(thisActs.length, lastActs.length),
+    };
+  }, [merged]);
+
   // ── Sync ──
   async function handleSync() {
     setSyncing(true);
-    setSyncMsg(null);
+    setToast(null);
     try {
       const [gr, sr] = await Promise.allSettled([postGarminSync(), postStravaSync({ days_back: 60 })]);
-      const msgs: string[] = [];
-      if (gr.status === "fulfilled") msgs.push(`Garmin: +${gr.value.synced_activities ?? 0}`);
-      else msgs.push("Garmin failed");
-      if (sr.status === "fulfilled") msgs.push(`Strava: +${sr.value.synced ?? 0}`);
-      else msgs.push("Strava failed");
-      setSyncMsg(msgs.join(" · "));
+      let totalActs = 0;
+      if (gr.status === "fulfilled") totalActs += gr.value.synced_activities ?? 0;
+      if (sr.status === "fulfilled") totalActs += sr.value.synced ?? 0;
+      setTotalSynced(totalActs);
+      setToast(`✓ Synced ${totalActs} activities`);
       await loadData();
     } catch {
-      setSyncMsg("Sync failed");
+      setToast("Sync failed");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function handleConnectStrava() {
+    try {
+      const { auth_url } = await getStravaConnect();
+      window.location.href = auth_url;
+    } catch {
+      setToast("Failed to get Strava OAuth URL");
     }
   }
 
@@ -972,6 +1293,12 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5 pb-12">
+
+      {/* Onboarding banners */}
+      <OnboardingBanners />
+
+      {/* Toast */}
+      {toast && <SyncToast message={toast} totalSynced={totalSynced} onDismiss={() => setToast(null)} />}
 
       {/* Top bar */}
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -984,6 +1311,29 @@ export default function DashboardPage() {
               weekday: "long", year: "numeric", month: "long", day: "numeric",
             })}
           </p>
+          {/* Sync status */}
+          {!loading && (
+            <div className="mt-1 flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 flex-shrink-0 rounded-full"
+                style={{
+                  background:
+                    syncStatus.dot === "green" ? CLR.fresh
+                    : syncStatus.dot === "amber" ? CLR.warn
+                    : syncStatus.dot === "red"   ? CLR.danger
+                    : "#52525b",
+                }}
+              />
+              <span className={`text-xs ${
+                syncStatus.dot === "green" ? "text-zinc-500"
+                : syncStatus.dot === "amber" ? "text-amber-400"
+                : syncStatus.dot === "red"   ? "text-red-400"
+                : "text-zinc-500"
+              }`}>
+                {syncStatus.text}
+              </span>
+            </div>
+          )}
         </div>
         <button
           onClick={() => void handleSync()}
@@ -993,12 +1343,6 @@ export default function DashboardPage() {
           {syncing ? "↻ Syncing…" : "↻ Sync"}
         </button>
       </div>
-
-      {syncMsg && (
-        <p className="text-xs text-zinc-400 border border-zinc-800 rounded-lg px-4 py-2 bg-zinc-900/50">
-          {syncMsg}
-        </p>
-      )}
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3">
@@ -1012,7 +1356,7 @@ export default function DashboardPage() {
               }`}
               style={
                 sportFilter === sp
-                  ? { background: sp === "all" ? "#3f3f46" : SPORT[sp].bg }
+                  ? { background: sp === "all" ? "#3f3f46" : getSportColor(sp).dot }
                   : {}
               }
             >
@@ -1038,46 +1382,104 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* No data banner */}
+      {/* Loading label */}
+      {loading && (
+        <p className="text-center text-sm text-zinc-500">Syncing your training data…</p>
+      )}
+
+      {/* Empty state */}
       {noData && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-8 text-center">
-          <p className="text-zinc-300 font-semibold">No training data found</p>
-          <p className="text-sm text-zinc-500 mt-1">
-            <Link href="/settings" className="text-emerald-400 underline">Connect a data source</Link>
-            {" "}in Settings to see your dashboard.
-          </p>
-        </div>
+        <EmptyState
+          onSyncGarmin={() => void handleSync()}
+          onConnectStrava={() => void handleConnectStrava()}
+          syncing={syncing}
+        />
       )}
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <KPICard
-          label="Training Load"
-          value={kpis.totalTSS}
-          sub={`TSS over ${dateRange}d`}
-          trend={kpis.tssTrend}
-          loading={loading}
-        />
-        <KPICard
-          label="Volume"
-          value={`${kpis.totalH.toFixed(1)}h`}
-          sub={`${kpis.swimH.toFixed(1)} swim · ${kpis.bikeH.toFixed(1)} bike · ${kpis.runH.toFixed(1)} run`}
-          loading={loading}
-        />
-        <KPICard
-          label="HRV Trend"
-          value={kpis.hrv7 ?? "—"}
-          sub={kpis.hrv14 != null ? `prev 7d: ${kpis.hrv14}` : "7-day avg score"}
-          trend={kpis.hrvTrend}
-          loading={loading}
-        />
-        <KPICard
-          label="Race Readiness"
-          value={readiness}
-          sub="/100 · HRV + sleep + form"
-          loading={loading}
-          valueColor={readinessColor(readiness)}
-        />
+      <div className="space-y-2">
+        {/* Compare toggle */}
+        <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1 w-fit">
+          {(["current", "compare"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setCompareMode(m)}
+              className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                compareMode === m
+                  ? "bg-zinc-700 text-zinc-100"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {m === "current" ? "This week" : "vs Last week"}
+            </button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          {compareMode === "compare" ? (
+            <>
+              <KPICard
+                label="Training Load"
+                value={`${weeklyKpis.thisTSS} TSS`}
+                loading={loading}
+                prevValue={`${weeklyKpis.lastTSS} TSS`}
+                changePct={weeklyKpis.tssChange}
+              />
+              <KPICard
+                label="Volume"
+                value={`${weeklyKpis.thisH}h`}
+                loading={loading}
+                prevValue={`${weeklyKpis.lastH}h`}
+                changePct={weeklyKpis.hrsChange}
+              />
+              <KPICard
+                label="Sessions"
+                value={weeklyKpis.thisSessions}
+                loading={loading}
+                prevValue={weeklyKpis.lastSessions}
+                changePct={weeklyKpis.sessionsChange}
+              />
+              <KPICard
+                label="Race Readiness"
+                value={readiness}
+                sub="/100"
+                loading={loading}
+                valueColor={readinessColor(readiness)}
+              />
+            </>
+          ) : (
+            <>
+              <KPICard
+                label="Training Load"
+                value={kpis.totalTSS}
+                sub={`TSS over ${dateRange}d`}
+                trend={kpis.tssTrend}
+                loading={loading}
+              />
+              <KPICard
+                label="Volume"
+                value={`${kpis.totalH.toFixed(1)}h`}
+                sub={`${kpis.swimH.toFixed(1)} swim · ${kpis.bikeH.toFixed(1)} bike · ${kpis.runH.toFixed(1)} run`}
+                loading={loading}
+              />
+              <KPICard
+                label="HRV Trend"
+                value={kpis.hrv7 ?? "—"}
+                sub={kpis.hrv14 != null ? `prev 7d: ${kpis.hrv14}` : "7-day avg score"}
+                trend={kpis.hrvTrend}
+                loading={loading}
+              />
+              <KPICard
+                label="Race Readiness"
+                value={readiness}
+                sub="/100 · HRV + sleep + form"
+                loading={loading}
+                valueColor={readinessColor(readiness)}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Main charts row */}
