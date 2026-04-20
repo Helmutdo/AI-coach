@@ -2,7 +2,7 @@
 
 > Full-stack sports analytics platform for endurance athletes. Sync your Garmin & Strava data, then chat with an AI coach that actually knows your training.
 
-![Dashboard](dashboard_ai_trainer_helmut_schweitzer.jpeg)
+![Dashboard](img_post_beta/dashboard_ai_trainer_helmut_schweitzer.jpeg)
 
 ---
 
@@ -21,11 +21,11 @@
 
 | Dashboard | Activities |
 |-----------|------------|
-| ![Dashboard](dashboard_2_ai_trainer_helmut_schweitzer.jpeg) | ![Activities](activities_ai_trainer_helmut_schweitzer.jpeg) |
+| ![Dashboard](img_post_beta/dashboard_2_ai_trainer_helmut_schweitzer.jpeg) | ![Activities](img_post_beta/activities_ai_trainer_helmut_schweitzer.jpeg) |
 
 | AI Coach | Sync & Integrations |
 |----------|---------------------|
-| ![Coach](ai_coach_ai_trainer_helmut_schweitzer.jpeg) | ![Sync](sync_API_ai_trainer_helmut_schweitzer.jpeg) |
+| ![Coach](img_post_beta/ai_coach_ai_trainer_helmut_schweitzer.jpeg) | ![Sync](img_post_beta/sync_API_ai_trainer_helmut_schweitzer.jpeg) |
 
 ---
 
