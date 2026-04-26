@@ -308,12 +308,12 @@ class AICoachService:
         """
         if not _LANGFUSE:
             return {}
-        kw: dict[str, Any] = {"name": name}
-        if session_id:
-            kw["session_id"] = session_id
         meta: dict[str, Any] = {}
         if user_id:
             meta["user_id"] = user_id
+        if session_id:
+            meta["session_id"] = session_id
+        kw: dict[str, Any] = {"name": name}
         if meta:
             kw["metadata"] = meta
         return kw
