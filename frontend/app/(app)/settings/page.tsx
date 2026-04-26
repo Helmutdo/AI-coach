@@ -4,11 +4,9 @@ import { signOut, useSession } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { AIProviderCard } from "@/components/ai/AIProviderCard";
 import { GarminLoginCard } from "@/components/garmin/GarminLoginCard";
 import { StravaConnectButton } from "@/components/strava/StravaConnectButton";
 import {
-  deleteAIConfigure,
   deleteGarminDisconnect,
   deleteUserData,
   getAIStatus,
@@ -17,7 +15,7 @@ import {
   postGarminSync,
   postStravaSync,
 } from "@/lib/api";
-import { providerBadgeLabel, type AIProviderId } from "@/lib/aiProviders";
+import { modelBadgeLabel } from "@/lib/aiProviders";
 import { useAppStore } from "@/store/appStore";
 
 function Spinner({ className }: { className?: string }) {
@@ -70,14 +68,11 @@ export default function SettingsPage() {
   } = useAppStore();
 
   const [garminEmail, setGarminEmail] = useState<string | null>(null);
-  const [aiPreview, setAiPreview] = useState<string | null>(null);
-  const [coachProvider, setCoachProvider] = useState<AIProviderId>("anthropic");
-  const [showAiChange, setShowAiChange] = useState(false);
+  const [aiModel, setAiModel] = useState<string | null>(null);
 
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
-  const [removingAi, setRemovingAi] = useState(false);
   const [deletingData, setDeletingData] = useState(false);
   const [stravaToast, setStravaToast] = useState<string | null>(null);
   const [stravaOAuthErr, setStravaOAuthErr] = useState<string | null>(null);
@@ -96,14 +91,10 @@ export default function SettingsPage() {
         stravaOAuthConfigured: st.oauth_configured ?? true,
         stravaAthleteName: st.athlete_name,
         aiConfigured: ai.configured,
-        aiProvider: ai.provider ?? null,
+        aiProvider: ai.model ?? null,
       });
       setGarminEmail(s.garmin_email ?? null);
-      setAiPreview(ai.key_preview ?? null);
-      const p = ai.provider;
-      setCoachProvider(
-        p && ["anthropic", "openai", "google"].includes(p) ? (p as AIProviderId) : "anthropic"
-      );
+      setAiModel(ai.model ?? null);
     } catch {
       setStatusFromApi({
         garminActive: false,
@@ -113,7 +104,7 @@ export default function SettingsPage() {
         aiProvider: null,
       });
       setGarminEmail(null);
-      setAiPreview(null);
+      setAiModel(null);
     }
   }, [userId, setStatusFromApi]);
 
@@ -160,19 +151,6 @@ export default function SettingsPage() {
     }
   }
 
-  async function removeAi() {
-    setRemovingAi(true);
-    try {
-      await deleteAIConfigure();
-      setShowAiChange(false);
-      await refreshStatuses();
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setRemovingAi(false);
-    }
-  }
-
   async function syncAllSources() {
     setSyncing(true);
     setSyncMsg(null);
@@ -210,7 +188,7 @@ export default function SettingsPage() {
 
   function confirmDeleteData() {
     const ok = window.confirm(
-      "This permanently deletes your synced activities, daily metrics, and coach chat history from our servers. Your Garmin and AI settings are not removed. Continue?"
+      "This permanently deletes your synced activities, daily metrics, and coach chat history from our servers. Continue?"
     );
     if (!ok) return;
     void (async () => {
@@ -373,69 +351,34 @@ export default function SettingsPage() {
       <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-medium text-zinc-200">AI Coach</h2>
-          {aiConfigured && (
-            <span className="inline-flex max-w-[min(100%,14rem)] items-center truncate rounded-full bg-violet-500/15 px-2.5 py-1 text-xs font-medium text-violet-300">
-              {providerBadgeLabel(coachProvider)}
-            </span>
-          )}
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+              aiConfigured
+                ? "bg-violet-500/15 text-violet-300"
+                : "bg-red-500/15 text-red-400"
+            }`}
+          >
+            {aiConfigured ? "Active" : "Not configured"}
+          </span>
         </div>
 
-        {aiConfigured && aiPreview && (
-          <p className="mt-3 font-mono text-sm text-zinc-400">
-            Key: <span className="text-zinc-200">{aiPreview}</span>
-          </p>
-        )}
-
-        <div className="mt-4 flex flex-wrap gap-2">
-          {aiConfigured && (
-            <button
-              type="button"
-              onClick={() => setShowAiChange((v) => !v)}
-              className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-white"
-            >
-              {showAiChange ? "Cancel" : "Change provider"}
-            </button>
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center gap-2 text-sm text-zinc-400">
+            <span className="text-zinc-500">Provider:</span>
+            <span className="font-medium text-zinc-200">OpenRouter</span>
+          </div>
+          {aiModel && (
+            <div className="flex items-center gap-2 text-sm text-zinc-400">
+              <span className="text-zinc-500">Model:</span>
+              <span className="font-mono text-zinc-200">{modelBadgeLabel(aiModel)}</span>
+            </div>
           )}
-          {aiConfigured && (
-            <button
-              type="button"
-              onClick={() => void removeAi()}
-              disabled={removingAi || !userId}
-              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {removingAi ? "Removing…" : "Remove"}
-            </button>
+          {!aiConfigured && (
+            <p className="mt-2 text-sm text-amber-300/80">
+              The server OPEN_ROUTER_APIKEY is not set — contact your administrator.
+            </p>
           )}
         </div>
-
-        {aiConfigured && showAiChange && (
-          <div className="mt-6">
-            <AIProviderCard
-              userId={userId}
-              initialProvider={coachProvider}
-              submitLabel="Save API key"
-              showFourthSlot
-              onSaved={async () => {
-                setShowAiChange(false);
-                await refreshStatuses();
-              }}
-            />
-          </div>
-        )}
-
-        {!aiConfigured && !showAiChange && (
-          <div className="mt-6">
-            <p className="mb-4 text-sm text-zinc-500">Configure an AI provider to use the coach.</p>
-            <AIProviderCard
-              userId={userId}
-              initialProvider="anthropic"
-              submitLabel="Save API key"
-              onSaved={async () => {
-                await refreshStatuses();
-              }}
-            />
-          </div>
-        )}
       </section>
 
       {/* Data & Sync */}

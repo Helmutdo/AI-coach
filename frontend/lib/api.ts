@@ -67,16 +67,6 @@ export type GarminStatusResponse = {
   garmin_email: string | null;
 };
 
-export type AIConfigureBody = {
-  provider: "anthropic" | "openai" | "google";
-  api_key: string;
-};
-
-export type AIConfigureResponse = {
-  provider: string;
-  key_preview: string;
-};
-
 export type GarminSyncResponse = {
   synced_activities: number;
   synced_days: number;
@@ -86,8 +76,7 @@ export type GarminSyncResponse = {
 
 export type AIStatusResponse = {
   configured: boolean;
-  provider: string | null;
-  key_preview: string | null;
+  model: string | null;
 };
 
 export type GarminActivityRow = {
@@ -106,6 +95,7 @@ export type GarminActivityRow = {
   aerobic_effect: number | null;
   anaerobic_effect: number | null;
   synced_at: string | null;
+  source?: "garmin" | "csv";
 };
 
 export type DailyMetricRow = {
@@ -210,26 +200,9 @@ export async function getAIStatus(): Promise<AIStatusResponse> {
   return data;
 }
 
-export async function postAIConfigure(
-  body: AIConfigureBody
-): Promise<AIConfigureResponse> {
-  const { data } = await api.post<AIConfigureResponse>(
-    "/api/auth/ai/configure",
-    body
-  );
-  return data;
-}
-
 export async function deleteGarminDisconnect(): Promise<{ status: string }> {
   const { data } = await api.delete<{ status: string }>(
     "/api/auth/garmin/disconnect"
-  );
-  return data;
-}
-
-export async function deleteAIConfigure(): Promise<{ status: string }> {
-  const { data } = await api.delete<{ status: string }>(
-    "/api/auth/ai/configure"
   );
   return data;
 }
@@ -260,10 +233,29 @@ export async function postGarminSync(): Promise<GarminSyncResponse> {
 
 export async function getGarminActivities(params?: {
   limit?: number;
+  days?: number;
 }): Promise<GarminActivityRow[]> {
   const { data } = await api.get<GarminActivityRow[]>(
     "/api/garmin/activities",
-    { params: { limit: params?.limit ?? 20 } }
+    { params: { limit: params?.limit ?? 100, days: params?.days ?? 30 } }
+  );
+  return data;
+}
+
+export type CSVUploadResponse = {
+  inserted: number;
+  skipped: number;
+  errors: string[];
+  total_rows: number;
+};
+
+export async function uploadGarminCSV(file: File): Promise<CSVUploadResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<CSVUploadResponse>(
+    "/api/garmin/upload-csv",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
   );
   return data;
 }
@@ -352,10 +344,15 @@ export type StravaActivityRow = {
 
 export async function getStravaActivities(params?: {
   limit?: number;
+  days?: number;
   sport_type?: string;
 }): Promise<StravaActivityRow[]> {
   const { data } = await api.get<StravaActivityRow[]>("/api/strava/activities", {
-    params: { limit: params?.limit ?? 50, sport_type: params?.sport_type },
+    params: {
+      limit: params?.limit ?? 100,
+      days: params?.days ?? 30,
+      sport_type: params?.sport_type,
+    },
   });
   return data;
 }

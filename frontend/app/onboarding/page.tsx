@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useState } from "react";
 
-import { AIProviderCard } from "@/components/ai/AIProviderCard";
 import { GarminLoginCard } from "@/components/garmin/GarminLoginCard";
 import { StravaConnectButton } from "@/components/strava/StravaConnectButton";
 import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
@@ -40,7 +39,6 @@ export default function OnboardingPage() {
   const stravaAthleteName = useAppStore((s) => s.stravaAthleteName);
   const setStatusFromApi = useAppStore((s) => s.setStatusFromApi);
   const setGarminConnected = useAppStore((s) => s.setGarminConnected);
-  const setAiConfigured = useAppStore((s) => s.setAiConfigured);
 
   const [step, setStep] = useState(1);
   const [fitnessProvider, setFitnessProvider] = useState<FitnessProviderStep>("choice");
@@ -64,7 +62,7 @@ export default function OnboardingPage() {
         stravaOAuthConfigured: st.oauth_configured ?? true,
         stravaAthleteName: st.athlete_name,
         aiConfigured: ai.configured,
-        aiProvider: ai.provider ?? null,
+        aiProvider: ai.model ?? null,
       });
     } catch {
       /* ignore */
@@ -77,14 +75,6 @@ export default function OnboardingPage() {
     } catch { /* ignore */ }
     setGarminConnected(false);
     setStep(3);
-  }
-
-  function handleSkipAI() {
-    try {
-      localStorage.setItem("onboarding_skipped_ai", "true");
-    } catch { /* ignore */ }
-    setAiConfigured(false);
-    router.push("/dashboard");
   }
 
   if (status === "loading") {
@@ -142,7 +132,7 @@ export default function OnboardingPage() {
               )}
             </div>
             <p className="mt-6 text-zinc-400">
-              Connect your fitness data and choose your AI coach to get started
+              Connect your fitness data to get personalized AI coaching
             </p>
             <button
               type="button"
@@ -277,25 +267,40 @@ export default function OnboardingPage() {
         )}
 
         {step === 3 && (
-          <div className="space-y-4">
-            <AIProviderCard
-              userId={userId}
-              submitLabel="Start coaching →"
-              onSaved={async () => {
-                await refreshStatus();
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-violet-500/15">
+              <svg
+                className="h-8 w-8 text-violet-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.5}
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"
+                />
+              </svg>
+            </div>
+            <h2 className="mt-4 text-xl font-semibold text-zinc-100">Your AI coach is ready</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Powered by OpenRouter — no API key required from you.
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">
+              Your coach has access to your training data and will provide personalized recommendations.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
                 router.push("/dashboard");
                 router.refresh();
               }}
-            />
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={handleSkipAI}
-                className="text-sm text-gray-400 hover:text-gray-300"
-              >
-                Skip — I'll configure this later
-              </button>
-            </div>
+              className="mt-8 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            >
+              Go to Dashboard →
+            </button>
           </div>
         )}
       </div>

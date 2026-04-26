@@ -1,9 +1,10 @@
-"""Garmin OAuth session and AI provider configuration."""
+"""Garmin OAuth session and AI status endpoints."""
 
 from __future__ import annotations
 
+import os
 import uuid
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from garminconnect import (
@@ -24,7 +25,6 @@ from services.garmin_service import (
     user_tokenstore,
 )
 from user_settings_service import get_or_create_user_settings
-from utils.encryption import ai_key_preview_from_stored, encrypt, get_plaintext_api_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -32,11 +32,6 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class GarminLoginBody(BaseModel):
     email: str | None = Field(None, description="Overrides GARMIN_EMAIL from .env")
     password: str | None = Field(None, description="Overrides GARMIN_PASSWORD from .env")
-
-
-class AIConfigureBody(BaseModel):
-    provider: Literal["anthropic", "openai", "google"]
-    api_key: str = Field(..., min_length=1)
 
 
 @router.post("/garmin/login")
@@ -83,18 +78,11 @@ def garmin_login(
 
 
 @router.get("/ai/status")
-def ai_status(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
-) -> dict[str, Any]:
-    row = get_or_create_user_settings(db, uuid.UUID(user_id))
-    key_plain = get_plaintext_api_key(row.ai_api_key_encrypted)
-    configured = bool(key_plain)
-    return {
-        "configured": configured,
-        "provider": row.ai_provider if configured else None,
-        "key_preview": ai_key_preview_from_stored(row.ai_api_key_encrypted) if configured else None,
-    }
+def ai_status() -> dict[str, Any]:
+    """Check whether the server-side OpenRouter API key is configured."""
+    configured = bool((os.getenv("OPEN_ROUTER_APIKEY") or "").strip())
+    model = (os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o").strip() if configured else None
+    return {"configured": configured, "model": model}
 
 
 @router.get("/garmin/status")
@@ -123,40 +111,6 @@ def garmin_status(
         "oauth_tokens_present": tokens,
         "garmin_email": garmin_email if active else None,
     }
-
-
-@router.post("/ai/configure")
-def configure_ai(
-    body: AIConfigureBody,
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
-) -> dict[str, Any]:
-    provider = body.provider
-    row = get_or_create_user_settings(db, uuid.UUID(user_id))
-    row.ai_provider = provider
-    try:
-        row.ai_api_key_encrypted = encrypt(body.api_key.strip())
-    except RuntimeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e) or "Encryption not configured (ENCRYPTION_KEY)",
-        ) from e
-    db.add(row)
-    db.commit()
-    preview = ai_key_preview_from_stored(row.ai_api_key_encrypted)
-    return {"provider": provider, "key_preview": preview}
-
-
-@router.delete("/ai/configure")
-def clear_ai_configure(
-    db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
-) -> dict[str, str]:
-    row = get_or_create_user_settings(db, uuid.UUID(user_id))
-    row.ai_api_key_encrypted = ""
-    db.add(row)
-    db.commit()
-    return {"status": "ok"}
 
 
 @router.delete("/garmin/disconnect")

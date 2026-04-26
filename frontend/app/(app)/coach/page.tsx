@@ -30,14 +30,14 @@ function sortByTime(a: ChatMessageRow, b: ChatMessageRow) {
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
-function TriovAvatar({ size = "sm" }: { size?: "sm" | "lg" }) {
-  const dim = size === "lg" ? "h-16 w-16 text-2xl" : "h-8 w-8 text-sm";
+function IAAvatar({ size = "sm" }: { size?: "sm" | "lg" }) {
+  const dim = size === "lg" ? "h-16 w-16 text-lg" : "h-8 w-8 text-xs";
   return (
     <div
       className={`${dim} flex flex-shrink-0 items-center justify-center rounded-full font-black text-white`}
       style={{ background: "#1D9E75" }}
     >
-      T
+      IA
     </div>
   );
 }
@@ -47,7 +47,7 @@ function TriovAvatar({ size = "sm" }: { size?: "sm" | "lg" }) {
 function TypingIndicator() {
   return (
     <div className="mb-3 flex items-start gap-3">
-      <TriovAvatar />
+      <IAAvatar />
       <div className="rounded-2xl rounded-tl-sm border border-gray-700/50 bg-gray-800/60 px-4 py-3">
         <div className="flex items-center gap-1.5">
           {[0, 150, 300].map((delay) => (
@@ -266,12 +266,11 @@ function CoachPageInner() {
   if (!aiReady) {
     return (
       <div className="mx-auto flex max-w-lg flex-col items-center justify-center gap-6 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-8 py-16 text-center">
-        <TriovAvatar size="lg" />
+        <IAAvatar size="lg" />
         <div>
-          <h1 className="text-xl font-semibold text-zinc-100">Triov Coach</h1>
+          <h1 className="text-xl font-semibold text-zinc-100">IA Coach</h1>
           <p className="mt-2 text-sm text-zinc-500">
-            Add an API key in Settings to start chatting. Your messages use the last 30 days of
-            synced training data as context.
+            The AI coach is not available. Contact your administrator to configure the OpenRouter API key.
           </p>
         </div>
         <Link
@@ -292,9 +291,9 @@ function CoachPageInner() {
 
       {/* ── Header ── */}
       <div className="flex shrink-0 items-center gap-3">
-        <TriovAvatar />
+        <IAAvatar />
         <div>
-          <h1 className="text-lg font-semibold tracking-tight text-zinc-100">Triov Coach</h1>
+          <h1 className="text-lg font-semibold tracking-tight text-zinc-100">IA Coach</h1>
           <div className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             <span className="text-xs text-zinc-500">Online</span>
@@ -321,7 +320,7 @@ function CoachPageInner() {
         {/* Empty welcome state */}
         {showEmptyState && (
           <div className="flex h-full flex-col items-center justify-center gap-6 py-12 text-center">
-            <TriovAvatar size="lg" />
+            <IAAvatar size="lg" />
             <div>
               <h2 className="text-lg font-semibold text-zinc-100">Your AI triathlon coach</h2>
               <p className="mt-2 max-w-sm text-sm text-zinc-400">
@@ -350,10 +349,10 @@ function CoachPageInner() {
             className="mb-3 flex items-start gap-3 transition-opacity duration-500"
             style={{ opacity: greetingVisible ? 1 : 0 }}
           >
-            <TriovAvatar />
+            <IAAvatar />
             <div className="mr-8 rounded-2xl rounded-tl-sm border border-gray-700/50 bg-gray-800/60 px-4 py-3 text-sm leading-relaxed text-gray-100">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                Triov Coach
+                IA Coach
               </p>
               <CoachMessage content={greeting} />
             </div>
@@ -366,7 +365,7 @@ function CoachPageInner() {
             key={m.id}
             className={`mb-3 flex ${m.role === "user" ? "justify-end" : "items-start gap-3"}`}
           >
-            {m.role === "assistant" && <TriovAvatar />}
+            {m.role === "assistant" && <IAAvatar />}
             <div
               className={`text-sm leading-relaxed ${
                 m.role === "user"
@@ -375,7 +374,7 @@ function CoachPageInner() {
               }`}
             >
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                {m.role === "user" ? "You" : "Triov Coach"}
+                {m.role === "user" ? "You" : "IA Coach"}
               </p>
               {m.role === "assistant" ? (
                 <CoachMessage content={m.content} />
@@ -418,7 +417,7 @@ function CoachPageInner() {
         </div>
 
         <p className="text-center text-xs text-zinc-600">
-          Triov Coach uses your last 30 days of training data as context.
+          IA Coach uses your last 30 days of training data as context.
         </p>
       </div>
     </div>

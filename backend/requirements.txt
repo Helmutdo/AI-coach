@@ -4,9 +4,9 @@ garminconnect
 sqlalchemy
 python-dotenv
 httpx
-anthropic
 openai
-google-genai>=1.0.0
+langfuse
+python-multipart
 pydantic
 cryptography
 slowapi

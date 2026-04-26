@@ -1,6 +1,4 @@
-"""
-LLM coach: Anthropic (Claude), OpenAI (GPT-4o), or Google AI Studio (Gemini) with shared prompts.
-"""
+"""LLM coach via OpenRouter (OpenAI-compatible API) with Langfuse observability."""
 
 from __future__ import annotations
 
@@ -13,16 +11,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
-import google.genai as genai
-from anthropic import Anthropic
-from openai import OpenAI
-
 logger = logging.getLogger(__name__)
 
-ANTHROPIC_MODEL = "claude-sonnet-4-20250514"
-OPENAI_MODEL = "gpt-4o"
-# Google AI Studio / Gemini — override with GEMINI_MODEL if needed
-GEMINI_MODEL = (os.getenv("GEMINI_MODEL") or "gemini-2.0-flash").strip() or "gemini-2.0-flash"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_MODEL = (os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o").strip() or "openai/gpt-4o"
 MAX_TOKENS = 1500
 
 _SYSTEM_COACH = """You are an expert endurance sports coach with access to the athlete's real training data
@@ -30,14 +22,13 @@ from Garmin Connect and/or Strava when connected.
 Analyze their metrics and provide personalized, evidence-based training recommendations.
 Be specific, reference their actual data, and explain the reasoning behind your recommendations."""
 
-
-def _normalize_provider(provider: str) -> str:
-    p = (provider or "anthropic").strip().lower()
-    if p not in ("anthropic", "openai", "google"):
-        raise ValueError(
-            f"Unsupported AI provider: {provider!r}. Use 'anthropic', 'openai', or 'google'."
-        )
-    return p
+# Use Langfuse-instrumented OpenAI client when available; fall back to plain OpenAI.
+try:
+    from langfuse.openai import OpenAI as _OpenAIClient
+    _LANGFUSE = True
+except ImportError:
+    from openai import OpenAI as _OpenAIClient  # type: ignore[assignment]
+    _LANGFUSE = False
 
 
 def _as_date(value: Any) -> date | None:
@@ -257,14 +248,13 @@ def _parse_analysis_result(raw: str) -> dict[str, Any]:
         logger.warning("Failed to parse analysis JSON: %s", e)
         return _fallback_analysis("Model did not return valid JSON.")
 
-    out: dict[str, Any] = {
+    return {
         "overall_status": str(data.get("overall_status", "unknown")),
         "fatigue_level": _clamp_int(data.get("fatigue_level"), 1, 10, 5),
         "readiness_score": _clamp_int(data.get("readiness_score"), 1, 10, 5),
         "key_observations": _as_str_list(data.get("key_observations")),
         "recommendations": _as_str_list(data.get("recommendations")),
     }
-    return out
 
 
 def _clamp_int(v: Any, lo: int, hi: int, default: int) -> int:
@@ -293,31 +283,40 @@ def _fallback_analysis(msg: str) -> dict[str, Any]:
     }
 
 
-def _gemini_response_text(response: Any) -> str:
-    try:
-        t = getattr(response, "text", None)
-        return (t or "").strip() if t is not None else ""
-    except (ValueError, AttributeError):
-        return ""
-
-
 class AICoachService:
-    """Coach LLM with Anthropic, OpenAI, or Google Gemini (AI Studio API key)."""
+    """Coach LLM via OpenRouter with optional Langfuse observability."""
 
-    def __init__(self, api_key: str, provider: str) -> None:
-        if not (api_key and str(api_key).strip()):
-            raise ValueError("api_key is required")
-        self._api_key = str(api_key).strip()
-        self.provider = _normalize_provider(provider)
-        self._anthropic: Anthropic | None = None
-        self._openai: OpenAI | None = None
-        self._genai_client: genai.Client | None = None
-        if self.provider == "anthropic":
-            self._anthropic = Anthropic(api_key=self._api_key)
-        elif self.provider == "openai":
-            self._openai = OpenAI(api_key=self._api_key)
-        else:
-            self._genai_client = genai.Client(api_key=self._api_key)
+    def __init__(self) -> None:
+        api_key = (os.getenv("OPEN_ROUTER_APIKEY") or "").strip()
+        if not api_key:
+            raise ValueError(
+                "OPEN_ROUTER_APIKEY is not configured — set it in the backend environment."
+            )
+        self._client = _OpenAIClient(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+        )
+
+    def _lf(
+        self,
+        name: str,
+        user_id: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Langfuse-specific kwargs; empty dict when Langfuse is not available.
+        Uses metadata for user_id to avoid passing unsupported kwargs to OpenAI API.
+        """
+        if not _LANGFUSE:
+            return {}
+        kw: dict[str, Any] = {"name": name}
+        if session_id:
+            kw["session_id"] = session_id
+        meta: dict[str, Any] = {}
+        if user_id:
+            meta["user_id"] = user_id
+        if meta:
+            kw["metadata"] = meta
+        return kw
 
     def build_context(
         self,
@@ -339,7 +338,6 @@ class AICoachService:
 
         lines: list[str] = []
 
-        # SECTION 1 — Athlete data sources
         lines.append("=== ATHLETE DATA SOURCES ===")
         g_status = "Garmin ✓" if garmin_connected else "Garmin not connected"
         if strava_connected:
@@ -351,14 +349,12 @@ class AICoachService:
             st_status = "Strava not connected"
         lines.append(f"Connected sources: {g_status} | {st_status}")
 
-        # SECTION 2 — Recent activities (last 15, merged)
         lines.append("")
         lines.append("=== RECENT ACTIVITIES (last 15, merged, newest first) ===")
         for u in last15:
             ds = u.act_date.isoformat()
             dur_min = int(round(u.duration_min))
-            dkm = u.distance_km
-            dkm_s = f"{dkm:.1f}" if dkm is not None else "—"
+            dkm_s = f"{u.distance_km:.1f}" if u.distance_km is not None else "—"
             lines.append(
                 f"- {ds} {u.source} {u.type}: {dur_min}min, {dkm_s}km, "
                 f"avg HR {_fmt_hr(u.avg_hr)}bpm, effort {_fmt_effort(u.effort_0_5)}/5"
@@ -366,7 +362,6 @@ class AICoachService:
         if not last15:
             lines.append("(no activities in the loaded window)")
 
-        # SECTION 3 — Weekly load summary (last 4 calendar weeks, Mon–Sun)
         lines.append("")
         lines.append("=== WEEKLY LOAD SUMMARY (last 4 weeks) ===")
         today = date.today()
@@ -383,7 +378,6 @@ class AICoachService:
                 f"types: {_week_type_summary(tc)}"
             )
 
-        # SECTION 4 — Daily health metrics from Garmin (last 14 days)
         lines.append("")
         lines.append("=== DAILY HEALTH METRICS (Garmin, last 14 days, newest first) ===")
         dated: list[tuple[date, dict[str, Any]]] = []
@@ -404,7 +398,6 @@ class AICoachService:
         if not last14:
             lines.append("(no daily metrics available)")
 
-        # SECTION 5 — Notable patterns
         lines.append("")
         lines.append("=== NOTABLE PATTERNS (computed from loaded activities) ===")
         if merged:
@@ -438,63 +431,25 @@ class AICoachService:
         user_message: str,
         context: str,
         conversation_history: list[Any],
+        *,
+        user_id: str | None = None,
+        conversation_id: str | None = None,
     ) -> str:
-        """Multi-turn chat with system prompt including Garmin context."""
-        system = (
-            f"{_SYSTEM_COACH}\n\nCurrent athlete data context:\n{context}"
-        )
+        """Multi-turn chat with system prompt including athlete context."""
+        system = f"{_SYSTEM_COACH}\n\nCurrent athlete data context:\n{context}"
         hist = self._normalize_history(conversation_history)
-        if self.provider == "anthropic":
-            assert self._anthropic is not None
-            messages: list[dict[str, Any]] = list(hist)
-            messages.append({"role": "user", "content": user_message})
-            resp = self._anthropic.messages.create(
-                model=ANTHROPIC_MODEL,
-                max_tokens=MAX_TOKENS,
-                system=system,
-                messages=messages,
-            )
-            blocks = getattr(resp, "content", []) or []
-            parts: list[str] = []
-            for b in blocks:
-                if getattr(b, "type", None) == "text":
-                    parts.append(getattr(b, "text", "") or "")
-            return "".join(parts).strip() or "(empty response)"
-
-        if self.provider == "openai":
-            assert self._openai is not None
-            oai_messages: list[dict[str, str]] = [{"role": "system", "content": system}]
-            for m in hist:
-                oai_messages.append({"role": m["role"], "content": m["content"]})
-            oai_messages.append({"role": "user", "content": user_message})
-            comp = self._openai.chat.completions.create(
-                model=OPENAI_MODEL,
-                max_tokens=MAX_TOKENS,
-                messages=oai_messages,
-            )
-            choice = comp.choices[0].message.content
-            return (choice or "").strip() or "(empty response)"
-
-        assert self._genai_client is not None
-        history_gemini: list[genai.types.Content] = []
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         for m in hist:
-            role = "user" if m["role"] == "user" else "model"
-            history_gemini.append(
-                genai.types.Content(
-                    role=role,
-                    parts=[genai.types.Part(text=m["content"])],
-                )
-            )
-        g_chat = self._genai_client.chats.create(
-            model=GEMINI_MODEL,
-            config=genai.types.GenerateContentConfig(
-                system_instruction=system,
-                max_output_tokens=MAX_TOKENS,
-            ),
-            history=history_gemini,
+            messages.append({"role": m["role"], "content": m["content"]})
+        messages.append({"role": "user", "content": user_message})
+
+        comp = self._client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            max_tokens=MAX_TOKENS,
+            messages=messages,
+            **self._lf("coach-chat", user_id=user_id, session_id=conversation_id),
         )
-        g_resp = g_chat.send_message(user_message)
-        return _gemini_response_text(g_resp) or "(empty response)"
+        return (comp.choices[0].message.content or "").strip() or "(empty response)"
 
     def _normalize_history(self, conversation_history: list[Any]) -> list[dict[str, str]]:
         out: list[dict[str, str]] = []
@@ -517,6 +472,7 @@ class AICoachService:
         garmin_connected: bool = False,
         strava_connected: bool = False,
         strava_athlete_name: str | None = None,
+        user_id: str | None = None,
     ) -> dict[str, Any]:
         """JSON analysis: fatigue, readiness, observations, recommendations."""
         ctx = self.build_context(
@@ -540,48 +496,15 @@ Use evidence from the metrics. Integers must be between 1 and 10.
 
 ATHLETE DATA:
 """
-        user_content = instruction + ctx
-
-        if self.provider == "anthropic":
-            assert self._anthropic is not None
-            resp = self._anthropic.messages.create(
-                model=ANTHROPIC_MODEL,
-                max_tokens=MAX_TOKENS,
-                system="You output only compact JSON for coaching analytics.",
-                messages=[{"role": "user", "content": user_content}],
-            )
-            text = ""
-            for b in getattr(resp, "content", []) or []:
-                if getattr(b, "type", None) == "text":
-                    text += getattr(b, "text", "") or ""
-            return _parse_analysis_result(text)
-
-        if self.provider == "openai":
-            assert self._openai is not None
-            comp = self._openai.chat.completions.create(
-                model=OPENAI_MODEL,
-                max_tokens=MAX_TOKENS,
-                response_format={"type": "json_object"},
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "You are a sports science analyst. Reply with JSON only.",
-                    },
-                    {"role": "user", "content": user_content},
-                ],
-            )
-            raw = comp.choices[0].message.content or ""
-            return _parse_analysis_result(raw)
-
-        assert self._genai_client is not None
-        g_resp = self._genai_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=user_content,
-            config=genai.types.GenerateContentConfig(
-                system_instruction="You output only compact JSON for coaching analytics.",
-                max_output_tokens=MAX_TOKENS,
-                response_mime_type="application/json",
-            ),
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": "You output only compact JSON for coaching analytics."},
+            {"role": "user", "content": instruction + ctx},
+        ]
+        comp = self._client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            max_tokens=MAX_TOKENS,
+            messages=messages,
+            **self._lf("coach-analysis", user_id=user_id),
         )
-        raw = _gemini_response_text(g_resp)
+        raw = (comp.choices[0].message.content or "").strip()
         return _parse_analysis_result(raw)

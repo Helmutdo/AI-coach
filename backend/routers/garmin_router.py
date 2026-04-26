@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import uuid
 from collections import Counter
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from sqlalchemy import and_, desc, func
@@ -15,11 +17,98 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import DailyMetrics, GarminActivity
+from models.models import DailyMetrics, GarminActivity, StravaActivity
 from services.sync_service import SyncService
 
 router = APIRouter(prefix="/garmin", tags=["garmin"])
 limiter = Limiter(key_func=get_remote_address)
+
+# Spanish column names from Garmin Connect CSV export
+_CSV_COL = {
+    "tipo": "Tipo de actividad",
+    "fecha": "Fecha",
+    "titulo": "Título",
+    "distancia": "Distancia",
+    "calorias": "Calorías",
+    "tiempo": "Tiempo",
+    "fc_media": "Frecuencia cardiaca media",
+    "fc_max": "FC máxima",
+    "te_aerobico": "TE aeróbico",
+    "te_anaerobico": "TE anaeróbico",
+    "training_stress": "Training Stress Score®",
+    "potencia_media": "Potencia media",
+    "potencia_max": "Potencia máxima",
+}
+
+# Spanish activity type → canonical name
+_TYPE_MAP: dict[str, str] = {
+    "carrera": "Running",
+    "ciclismo": "Cycling",
+    "natación": "Swimming",
+    "entreno de fuerza": "Strength Training",
+    "triatlon": "Triathlon",
+    "triatlón": "Triathlon",
+    "caminata": "Walking",
+    "senderismo": "Hiking",
+    "ciclismo indoor": "Indoor Cycling",
+    "yoga": "Yoga",
+    "multideporte": "Multi-Sport",
+    "cardio": "Cardio",
+    "elíptica": "Elliptical",
+    "remo": "Rowing",
+    "esquí de fondo": "Cross-Country Skiing",
+    "snowboard": "Snowboard",
+    "paddleboarding": "Paddleboarding",
+    "escalada interior": "Indoor Climbing",
+}
+
+
+def _map_type(raw: str) -> str:
+    return _TYPE_MAP.get(raw.strip().lower(), raw.strip())
+
+
+def _parse_duration(s: str) -> int | None:
+    """HH:MM:SS or MM:SS → seconds. Returns None if invalid."""
+    s = s.strip()
+    if not s or s == "--":
+        return None
+    # Remove sub-second suffix like "00:40:21.0"
+    s = s.split(".")[0]
+    parts = s.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except ValueError:
+        pass
+    return None
+
+
+def _parse_float(s: str) -> float | None:
+    s = s.strip().replace(",", ".")
+    if not s or s == "--":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _parse_int(s: str) -> int | None:
+    s = s.strip().replace(",", "")
+    if not s or s == "--":
+        return None
+    try:
+        return int(float(s))
+    except ValueError:
+        return None
+
+
+def _csv_activity_id(user_id: uuid.UUID, start_time: datetime, title: str) -> str:
+    raw = f"{user_id}|{start_time.isoformat()}|{title}"
+    digest = hashlib.sha256(raw.encode()).hexdigest()[:16]
+    return f"csv_{digest}"
 
 
 def _week_start(d: date) -> date:
@@ -48,18 +137,24 @@ def sync_garmin(
 def list_activities(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(20, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=500),
+    days: int = Query(30, ge=1, le=400),
 ) -> list[dict[str, Any]]:
     uid = uuid.UUID(user_id)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     rows = (
         db.query(GarminActivity)
-        .filter(GarminActivity.user_id == uid)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time >= cutoff,
+        )
         .order_by(desc(GarminActivity.start_time), desc(GarminActivity.id))
         .limit(limit)
         .all()
     )
     out: list[dict[str, Any]] = []
     for a in rows:
+        raw = a.raw_data or {}
         out.append(
             {
                 "id": a.id,
@@ -77,9 +172,155 @@ def list_activities(
                 "aerobic_effect": a.aerobic_effect,
                 "anaerobic_effect": a.anaerobic_effect,
                 "synced_at": a.synced_at.isoformat() if a.synced_at else None,
+                "source": raw.get("source", "garmin"),
             }
         )
     return out
+
+
+@router.post("/upload-csv")
+@limiter.limit("10/minute")
+def upload_garmin_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """Import a Garmin Connect CSV export.
+
+    Cross-references existing Strava activities to avoid duplicates.
+    Returns counts of inserted, skipped, and error rows.
+    """
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+
+    raw_bytes = file.file.read()
+    try:
+        text = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw_bytes.decode("latin-1")
+
+    import csv as _csv
+
+    reader = _csv.DictReader(io.StringIO(text))
+    uid = uuid.UUID(user_id)
+    now = datetime.now(timezone.utc)
+
+    inserted = 0
+    skipped = 0
+    errors: list[str] = []
+
+    # Preload Strava start dates for dedup (within the CSV date range)
+    strava_dates: list[datetime] = [
+        r.start_date
+        for r in db.query(StravaActivity.start_date)
+        .filter(StravaActivity.user_id == uid)
+        .all()
+        if r.start_date
+    ]
+
+    def _near_strava(dt: datetime) -> bool:
+        """True when a Strava activity exists within 15 minutes."""
+        for sd in strava_dates:
+            sd_naive = sd.replace(tzinfo=None) if sd.tzinfo else sd
+            dt_naive = dt.replace(tzinfo=None) if dt.tzinfo else dt
+            if abs((sd_naive - dt_naive).total_seconds()) < 900:
+                return True
+        return False
+
+    for row_num, row in enumerate(reader, start=2):
+        try:
+            fecha_raw = row.get("Fecha", "").strip()
+            if not fecha_raw or fecha_raw == "--":
+                skipped += 1
+                continue
+
+            try:
+                start_dt = datetime.strptime(fecha_raw, "%Y-%m-%d %H:%M:%S")
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                errors.append(f"Row {row_num}: bad date format '{fecha_raw}'")
+                skipped += 1
+                continue
+
+            tipo_raw = row.get("Tipo de actividad", "").strip()
+            titulo = row.get("Título", "").strip() or tipo_raw
+            activity_type = _map_type(tipo_raw)
+            act_id = _csv_activity_id(uid, start_dt, titulo)
+
+            # Skip if already in DB (same activity_id)
+            exists = (
+                db.query(GarminActivity.id)
+                .filter(
+                    GarminActivity.user_id == uid,
+                    GarminActivity.activity_id == act_id,
+                )
+                .first()
+            )
+            if exists:
+                skipped += 1
+                continue
+
+            # Skip if a Garmin API activity exists within ±5 min (non-CSV)
+            cutoff_lo = start_dt - timedelta(minutes=5)
+            cutoff_hi = start_dt + timedelta(minutes=5)
+            dup = (
+                db.query(GarminActivity.id)
+                .filter(
+                    GarminActivity.user_id == uid,
+                    GarminActivity.start_time >= cutoff_lo,
+                    GarminActivity.start_time <= cutoff_hi,
+                    GarminActivity.activity_type == activity_type,
+                    ~GarminActivity.activity_id.like("csv_%"),
+                )
+                .first()
+            )
+            if dup:
+                skipped += 1
+                continue
+
+            dist_km = _parse_float(row.get("Distancia", ""))
+            duration_s = _parse_duration(row.get("Tiempo", ""))
+            calories = _parse_int(row.get("Calorías", ""))
+            avg_hr = _parse_int(row.get("Frecuencia cardiaca media", ""))
+            max_hr = _parse_int(row.get("FC máxima", ""))
+            aerobic_e = _parse_float(row.get("TE aeróbico", ""))
+
+            linked_strava = _near_strava(start_dt)
+
+            act = GarminActivity(
+                user_id=uid,
+                activity_id=act_id,
+                activity_name=titulo,
+                activity_type=activity_type,
+                start_time=start_dt,
+                duration_seconds=duration_s,
+                distance_meters=dist_km * 1000 if dist_km is not None else None,
+                avg_heart_rate=avg_hr,
+                max_heart_rate=max_hr,
+                calories=calories,
+                aerobic_effect=aerobic_e,
+                synced_at=now,
+                raw_data={
+                    "source": "csv",
+                    "linked_strava": linked_strava,
+                },
+            )
+            db.add(act)
+            inserted += 1
+
+        except Exception as exc:
+            errors.append(f"Row {row_num}: {exc}")
+            skipped += 1
+            continue
+
+    db.commit()
+    return {
+        "inserted": inserted,
+        "skipped": skipped,
+        "errors": errors[:20],
+        "total_rows": inserted + skipped,
+    }
 
 
 @router.get("/daily-metrics")

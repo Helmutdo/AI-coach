@@ -235,16 +235,20 @@ def strava_sync(
 def strava_activities(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(100, ge=1, le=500),
+    days: int = Query(30, ge=1, le=400),
     sport_type: str | None = Query(None),
 ) -> list[dict[str, Any]]:
+    from datetime import timedelta, timezone
     uid = uuid.UUID(user_id)
-    q = db.query(StravaActivity).filter(StravaActivity.user_id == uid)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    q = db.query(StravaActivity).filter(
+        StravaActivity.user_id == uid,
+        StravaActivity.start_date >= cutoff,
+    )
     if sport_type is not None and sport_type.strip():
         q = q.filter(StravaActivity.sport_type == sport_type.strip())
-    rows = (
-        q.order_by(StravaActivity.start_date.desc()).limit(limit).all()
-    )
+    rows = q.order_by(StravaActivity.start_date.desc()).limit(limit).all()
     return [_serialize_activity(r) for r in rows]
 
 

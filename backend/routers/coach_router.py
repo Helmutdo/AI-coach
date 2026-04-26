@@ -23,7 +23,6 @@ from orm_serializers import (
 )
 from services.ai_service import AICoachService
 from user_settings_service import get_or_create_user_settings
-from utils.encryption import get_plaintext_api_key
 
 router = APIRouter(prefix="/coach", tags=["coach"])
 limiter = Limiter(key_func=get_remote_address)
@@ -34,24 +33,14 @@ class ChatBody(BaseModel):
     conversation_id: str = Field(..., min_length=1, max_length=64)
 
 
-def _make_ai_service(settings: Any) -> AICoachService:
-    key = (get_plaintext_api_key(settings.ai_api_key_encrypted) or "").strip()
-    if not key:
-        raise HTTPException(
-            status_code=400,
-            detail="AI API key not configured — POST /api/auth/ai/configure",
-        )
+def _get_ai_service() -> AICoachService:
     try:
-        return AICoachService(api_key=key, provider=settings.ai_provider)
+        return AICoachService()
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
 
 def _ai_failure_reply(exc: BaseException) -> tuple[str, bool]:
-    """
-    Returns (user-facing message, provider_error).
-    provider_error=True when the key is likely invalid/unauthorized.
-    """
     text = str(exc).lower()
     auth_like = (
         "401" in text
@@ -66,8 +55,7 @@ def _ai_failure_reply(exc: BaseException) -> tuple[str, bool]:
     )
     if auth_like:
         return (
-            "Could not connect to the AI provider: the API key appears invalid or expired. "
-            "Update your key in Settings → AI provider.",
+            "Could not connect to the AI provider: the API key appears invalid or expired.",
             True,
         )
     return (f"AI request failed: {exc}", False)
@@ -91,7 +79,7 @@ def coach_chat(
 ) -> dict[str, Any]:
     uid = uuid.UUID(user_id)
     settings = get_or_create_user_settings(db, uid)
-    ai = _make_ai_service(settings)
+    ai = _get_ai_service()
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
@@ -150,7 +138,13 @@ def coach_chat(
     history = [{"role": m.role, "content": m.content} for m in reversed(recent)]
 
     try:
-        reply = ai.chat(body.message, context, history)
+        reply = ai.chat(
+            body.message,
+            context,
+            history,
+            user_id=user_id,
+            conversation_id=body.conversation_id,
+        )
         provider_error = False
     except Exception as e:
         reply, provider_error = _ai_failure_reply(e)
@@ -195,7 +189,7 @@ def coach_analysis(
 ) -> dict[str, Any]:
     uid = uuid.UUID(user_id)
     settings = get_or_create_user_settings(db, uid)
-    ai = _make_ai_service(settings)
+    ai = _get_ai_service()
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
@@ -241,6 +235,7 @@ def coach_analysis(
             garmin_connected=garmin_connected,
             strava_connected=strava_connected,
             strava_athlete_name=strava_athlete_name,
+            user_id=user_id,
         )
     except Exception as e:
         msg, _ = _ai_failure_reply(e)
@@ -257,7 +252,7 @@ def coach_daily_brief(
     """Generate a personalized daily training brief with status classification."""
     uid = uuid.UUID(user_id)
     settings = get_or_create_user_settings(db, uid)
-    ai = _make_ai_service(settings)
+    ai = _get_ai_service()
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
@@ -294,7 +289,6 @@ def coach_daily_brief(
     strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
     met_dicts = [daily_metrics_to_dict(today_metric)] if today_metric else []
 
-    # Determine status from data (rule-based, instant)
     status = "base"
     if today_metric:
         hrv = getattr(today_metric, "hrv_status", None)
@@ -329,7 +323,7 @@ def coach_daily_brief(
     )
 
     try:
-        brief = ai.chat(brief_prompt, context, [])
+        brief = ai.chat(brief_prompt, context, [], user_id=user_id)
     except Exception as e:
         msg, _ = _ai_failure_reply(e)
         raise HTTPException(status_code=502, detail=msg) from e
@@ -347,7 +341,7 @@ def coach_greeting(
     """Generate an ephemeral personalized greeting for the coach page."""
     uid = uuid.UUID(user_id)
     settings = get_or_create_user_settings(db, uid)
-    ai = _make_ai_service(settings)
+    ai = _get_ai_service()
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
@@ -401,7 +395,7 @@ def coach_greeting(
     )
 
     try:
-        message = ai.chat(greeting_prompt, context, [])
+        message = ai.chat(greeting_prompt, context, [], user_id=user_id)
     except Exception as e:
         msg, _ = _ai_failure_reply(e)
         raise HTTPException(status_code=502, detail=msg) from e
