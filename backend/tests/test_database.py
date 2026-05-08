@@ -3,17 +3,17 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
-from database.database import engine, get_db
+from database.database import get_db
 from main import app
 
 
-def test_get_db_yields_session():
+def test_get_db_yields_usable_session():
     gen = get_db()
     session = next(gen)
     try:
-        assert session.bind is engine
+        session.execute(text("SELECT 1"))
     finally:
         try:
             next(gen)
@@ -23,6 +23,7 @@ def test_get_db_yields_session():
 
 def test_lifespan_init_db_creates_tables():
     with TestClient(app):
+        from database.database import engine
         insp = inspect(engine)
         assert sorted(insp.get_table_names()) == [
             "chat_messages",

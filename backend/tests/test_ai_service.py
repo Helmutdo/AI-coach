@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-import pytest
-
 from services.ai_service import AICoachService, _parse_analysis_result
 
 
 def test_build_context_shapes():
-    svc = AICoachService("test-key-openai", "openai")
+    svc = AICoachService()
     today = date.today()
     garmin_activities = [
         {
@@ -64,14 +62,11 @@ def test_build_context_shapes():
     assert "NOTABLE PATTERNS" in ctx
 
 
-def test_provider_invalid():
-    with pytest.raises(ValueError, match="Unsupported"):
-        AICoachService("k", "azure")
-
-
-def test_google_provider_inits():
-    svc = AICoachService("test-google-key", "google")
-    assert svc.provider == "google"
+def test_init_requires_key(monkeypatch):
+    monkeypatch.delenv("OPEN_ROUTER_APIKEY", raising=False)
+    import pytest
+    with pytest.raises(ValueError, match="OPEN_ROUTER_APIKEY"):
+        AICoachService()
 
 
 def test_parse_analysis_result():
@@ -82,6 +77,20 @@ def test_parse_analysis_result():
     assert d["readiness_score"] == 8
 
 
-def test_init_requires_key():
-    with pytest.raises(ValueError):
-        AICoachService("", "anthropic")
+def test_parse_analysis_result_clamped():
+    raw = '{"overall_status": "high", "fatigue_level": 99, "readiness_score": -5, "key_observations": [], "recommendations": []}'
+    d = _parse_analysis_result(raw)
+    assert d["fatigue_level"] == 10
+    assert d["readiness_score"] == 1
+
+
+def test_parse_analysis_result_invalid_json():
+    d = _parse_analysis_result("not json at all")
+    assert d["overall_status"] == "unknown"
+    assert d["fatigue_level"] == 5
+
+
+def test_build_context_no_data():
+    svc = AICoachService()
+    ctx = svc.build_context(garmin_connected=False, strava_connected=False)
+    assert "no activities" in ctx.lower() or "no activities" in ctx or "(no activities" in ctx

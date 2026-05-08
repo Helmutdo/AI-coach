@@ -1,8 +1,21 @@
-# Monorepo root — keep build artifacts and secrets out of Git
-/backend/venv/
-/backend/.env
-/backend/*.db
-/frontend/node_modules/
-/frontend/.next/
-/frontend/.env*.local
+# Monorepo root
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+.env
+backend/.env
+frontend/.env*.local
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+
+# ── Python (root-level catches; backend/.gitignore covers backend/) ───────────
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite3
+.pytest_cache/
+
+# ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
+Thumbs.db

@@ -31,8 +31,7 @@ def upsert_me(body: UserMeBody, db: Session = Depends(get_db)) -> dict[str, Any]
     if row:
         row.email = body.email
         row.name = body.name or row.name
-        if body.avatar_url is not None:
-            row.avatar_url = body.avatar_url
+        row.avatar_url = body.avatar_url
         row.updated_at = now
         db.add(row)
         db.commit()
