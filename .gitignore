@@ -21,6 +21,14 @@ __pycache__/
 .superpowers/
 docs/superpowers/
 
+# ── Project working notes (not for production) ────────────────────────────────
+Activities.csv
+cambios_claude.txt
+proximos_pasos.txt
+PROYECTO_RESUMEN.txt
+img_post_beta/
+railway.toml
+
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
