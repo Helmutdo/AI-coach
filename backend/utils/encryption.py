@@ -22,7 +22,13 @@ def _fernet() -> Fernet | None:
     key = (os.getenv("ENCRYPTION_KEY") or "").strip()
     if not key:
         return None
-    return Fernet(key.encode("ascii"))
+    try:
+        return Fernet(key.encode("ascii"))
+    except (ValueError, Exception):
+        raise RuntimeError(
+            f"ENCRYPTION_KEY is set but invalid — must be 32 url-safe base64 bytes. "
+            f"Generate with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
 
 
 def encrypt(plaintext: str) -> str:

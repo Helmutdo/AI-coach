@@ -37,45 +37,10 @@ export default auth(async (req) => {
     return;
   }
 
-  const base = (process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
-
-  try {
-    const [gRes, aiRes, stRes] = await Promise.all([
-      fetch(`${base}/api/auth/garmin/status`, {
-        headers: { "X-User-Id": backendUserId },
-        cache: "no-store",
-      }),
-      fetch(`${base}/api/auth/ai/status`, {
-        headers: { "X-User-Id": backendUserId },
-        cache: "no-store",
-      }),
-      fetch(`${base}/api/strava/status`, {
-        headers: { "X-User-Id": backendUserId },
-        cache: "no-store",
-      }),
-    ]);
-
-    const g = (await gRes.json()) as { active?: boolean };
-    const ai = (await aiRes.json()) as { configured?: boolean };
-    const st = (await stRes.json()) as { connected?: boolean };
-
-    const aiOk = ai.configured === true;
-    const onboardingDone = aiOk;
-
-    if (!onboardingDone) {
-      if (isAppRoute(pathname) && pathname !== "/onboarding") {
-        return Response.redirect(new URL("/onboarding", req.url));
-      }
-      return;
-    }
-
-    if (onboardingDone && pathname === "/onboarding") {
-      return Response.redirect(new URL("/dashboard", req.url));
-    }
-  } catch {
-    // Backend unreachable — don't know the user's config status.
-    // Let the request through rather than redirecting to onboarding on every
-    // transient server error. The UI will show its own "unavailable" state.
+  // backendUserId present = user completed onboarding. Skip backend calls to
+  // avoid Middleware timeout when Render cold-starts (free tier sleeps).
+  if (pathname === "/onboarding") {
+    return Response.redirect(new URL("/dashboard", req.url));
   }
 });
 
