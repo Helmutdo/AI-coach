@@ -1,0 +1,92 @@
+"use client";
+
+import { useRef, useState } from "react";
+
+import { uploadGarminCSV } from "@/lib/api";
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className ?? "h-5 w-5"}`}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
+export type GarminCSVUploadProps = {
+  onUploaded?: () => void | Promise<void>;
+};
+
+export function GarminCSVUpload({ onUploaded }: GarminCSVUploadProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleFile(file: File) {
+    setLoading(true);
+    setErr(null);
+    setResult(null);
+    try {
+      const res = await uploadGarminCSV(file);
+      setResult({ inserted: res.inserted, skipped: res.skipped });
+      await onUploaded?.();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setLoading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  function onChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) void handleFile(file);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-zinc-500">
+        Export from{" "}
+        <span className="text-zinc-400">Garmin Connect → Activities → Export CSV</span>, then
+        upload here.
+      </p>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".csv"
+        className="hidden"
+        onChange={onChange}
+        disabled={loading}
+      />
+
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={loading}
+        className="inline-flex w-fit items-center gap-2 rounded-lg border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700 disabled:opacity-50"
+      >
+        {loading && <Spinner className="h-4 w-4 text-zinc-300" />}
+        {loading ? "Uploading…" : "Upload CSV"}
+      </button>
+
+      {result && (
+        <p className="text-sm text-emerald-400">
+          {result.inserted} activities imported, {result.skipped} skipped.
+        </p>
+      )}
+      {err && <p className="text-sm text-red-400">{err}</p>}
+    </div>
+  );
+}

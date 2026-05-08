@@ -194,7 +194,9 @@ def upload_garmin_csv(
     if not file.filename or not file.filename.lower().endswith(".csv"):
         raise HTTPException(status_code=400, detail="Please upload a .csv file.")
 
-    raw_bytes = file.file.read()
+    raw_bytes = file.file.read(5 * 1024 * 1024 + 1)  # 5 MB limit
+    if len(raw_bytes) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV file too large (max 5 MB).")
     try:
         text = raw_bytes.decode("utf-8")
     except UnicodeDecodeError:
