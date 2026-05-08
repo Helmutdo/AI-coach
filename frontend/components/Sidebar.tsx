@@ -35,6 +35,16 @@ const links = [
     ),
   },
   {
+    href: "/profile",
+    label: "Profile",
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4 shrink-0">
+        <circle cx="12" cy="8" r="4" />
+        <path strokeLinecap="round" d="M4 20c0-4 3.582-7 8-7s8 3 8 7" />
+      </svg>
+    ),
+  },
+  {
     href: "/settings",
     label: "Settings",
     icon: (
