@@ -74,7 +74,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Garmin AI Coach API", lifespan=lifespan)
+app = FastAPI(title="AI Coach API", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

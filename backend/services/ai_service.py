@@ -104,20 +104,6 @@ class _UnifiedActivity:
     is_hard: bool
 
 
-def _strava_activity_datetime(a: dict[str, Any]) -> datetime:
-    st = a.get("start_time")
-    if isinstance(st, datetime):
-        return st.replace(tzinfo=None) if st.tzinfo else st
-    if isinstance(st, str):
-        try:
-            s = st.replace("Z", "+00:00")
-            dt = datetime.fromisoformat(s)
-            return dt.replace(tzinfo=None) if dt.tzinfo else dt
-        except ValueError:
-            pass
-    return _EPOCH
-
-
 def _unified_from_garmin(a: dict[str, Any]) -> _UnifiedActivity | None:
     dt = _activity_datetime(a)
     if dt == _EPOCH:
@@ -160,7 +146,7 @@ def _unified_from_garmin(a: dict[str, Any]) -> _UnifiedActivity | None:
 
 
 def _unified_from_strava(a: dict[str, Any]) -> _UnifiedActivity | None:
-    dt = _strava_activity_datetime(a)
+    dt = _activity_datetime(a)
     if dt == _EPOCH:
         return None
     d = dt.date()

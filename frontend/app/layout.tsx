@@ -17,8 +17,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Garmin AI Coach",
-  description: "Garmin data and AI coaching",
+  title: "AI Coach",
+  description: "AI-powered endurance coach — Strava & Garmin CSV sync",
 };
 
 export default function RootLayout({

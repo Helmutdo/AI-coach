@@ -1,0 +1,10 @@
+
+  1. Crear proyecto Supabase → supabase.com → New project → copiar connection string de Settings → Database → Connection string (URI mode)
+  2. Reemplazar en .env:
+  DATABASE_URL=postgresql://postgres:[PASSWORD]@db.[ref].supabase.co:5432/postgres
+  3. Testear local:
+  cd backend && pip install psycopg2-binary && uvicorn main:app
+  3. SQLAlchemy crea tablas automático en Postgres via init_db().
+  4. En Railway → Variables → agregar mismo DATABASE_URL con Supabase URL.
+
+  ---

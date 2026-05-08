@@ -149,7 +149,7 @@ def _upsert_daily(db: Session, row: dict[str, Any], user_id: uuid.UUID) -> None:
 
 
 class SyncService:
-    """Fetch from Garmin Connect and upsert into SQLite."""
+    """Fetch from Garmin Connect and upsert into the database."""
 
     @staticmethod
     def garmin_session_ready(

@@ -10,7 +10,7 @@
 
 - **AI Coach** — Chat with Claude 3.5, GPT-4o, or Gemini with full context of your last 30-90 days of training.
 - **Observability** — Built-in **Langfuse** integration to track AI traces and performance.
-- **Garmin Sync** — Activities, daily metrics (HRV, sleep, body battery, VO2max).
+- **Garmin Import** — Upload CSV exports from Garmin Connect (activities, HRV, sleep, body battery, VO2max).
 - **Strava Integration** — OAuth sync with power, pace, and suffer score.
 - **Performance Management Chart** — CTL, ATL, TSB (fitness, fatigue, form).
 - **HR Zone Distribution** — Weekly breakdown by sport type.
@@ -39,7 +39,7 @@
 | **Auth** | NextAuth v5 (Google OAuth) |
 | **AI** | Anthropic (Claude) · OpenAI (GPT) · Google (Gemini) |
 | **Observability**| **Langfuse** (Trace & Analytics) |
-| **Integrations** | Garmin Connect (Garth OAuth) · Strava API |
+| **Integrations** | Garmin CSV export · Strava API (OAuth) |
 | **Security** | Fernet encryption for tokens, rate limiting via slowapi |
 
 ---
@@ -85,7 +85,7 @@ npm run dev
 
 **`backend/.env`**
 ```env
-DATABASE_URL=sqlite:///./garmin_coach.db
+DATABASE_URL=postgresql://user:password@host:5432/postgres
 ENCRYPTION_KEY=<fernet-key>
 CORS_ORIGINS=http://localhost:3000
 
@@ -116,7 +116,7 @@ NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ## How It Works
 
 1. **Login** with Google OAuth.
-2. **Onboarding**: choose **Garmin** or **Strava** as your fitness source and connect it.
+2. **Onboarding**: connect **Strava** (OAuth) or upload a **Garmin CSV** export from Garmin Connect.
 3. **Configure AI** provider key.
 4. **Sync** your activities and daily metrics.
 5. **Chat** with the AI coach — it has full context of your training load, sleep, HRV, and recent workouts.

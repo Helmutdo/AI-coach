@@ -1,5 +1,5 @@
 {
-  "name": "garmin-trainer",
+  "name": "ai-coach",
   "private": true,
   "description": "Monorepo: ejecuta npm run dev desde esta carpeta para API + Next con puertos fijos.",
   "scripts": {

@@ -61,6 +61,40 @@ def _ai_failure_reply(exc: BaseException) -> tuple[str, bool]:
     return (f"AI request failed: {exc}", False)
 
 
+def _fetch_recent_context(
+    db: Session, uid: uuid.UUID, days: int = 7, act_limit: int = 20
+) -> tuple[list[Any], list[Any], DailyMetrics | None]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    acts = (
+        db.query(GarminActivity)
+        .filter(
+            GarminActivity.user_id == uid,
+            GarminActivity.start_time.isnot(None),
+            GarminActivity.start_time >= cutoff,
+        )
+        .order_by(desc(GarminActivity.start_time))
+        .limit(act_limit)
+        .all()
+    )
+    strava_rows = (
+        db.query(StravaActivity)
+        .filter(
+            StravaActivity.user_id == uid,
+            StravaActivity.start_date >= cutoff,
+        )
+        .order_by(desc(StravaActivity.start_date))
+        .limit(act_limit)
+        .all()
+    )
+    today_metric = (
+        db.query(DailyMetrics)
+        .filter(DailyMetrics.user_id == uid)
+        .order_by(desc(DailyMetrics.date))
+        .first()
+    )
+    return acts, strava_rows, today_metric
+
+
 def _integration_flags(settings: Any) -> tuple[bool, bool, str | None]:
     garmin_connected = bool(getattr(settings, "garmin_token_encrypted", None))
     strava_connected = bool(getattr(settings, "strava_connected", False))
@@ -256,35 +290,7 @@ def coach_daily_brief(
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-    acts = (
-        db.query(GarminActivity)
-        .filter(
-            GarminActivity.user_id == uid,
-            GarminActivity.start_time.isnot(None),
-            GarminActivity.start_time >= cutoff,
-        )
-        .order_by(desc(GarminActivity.start_time))
-        .limit(20)
-        .all()
-    )
-    strava_rows = (
-        db.query(StravaActivity)
-        .filter(
-            StravaActivity.user_id == uid,
-            StravaActivity.start_date >= cutoff,
-        )
-        .order_by(desc(StravaActivity.start_date))
-        .limit(20)
-        .all()
-    )
-    today_metric = (
-        db.query(DailyMetrics)
-        .filter(DailyMetrics.user_id == uid)
-        .order_by(desc(DailyMetrics.date))
-        .first()
-    )
-
+    acts, strava_rows, today_metric = _fetch_recent_context(db, uid)
     act_dicts = [activity_to_dict(a) for a in acts]
     strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
     met_dicts = [daily_metrics_to_dict(today_metric)] if today_metric else []
@@ -345,35 +351,7 @@ def coach_greeting(
 
     garmin_connected, strava_connected, strava_athlete_name = _integration_flags(settings)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-    acts = (
-        db.query(GarminActivity)
-        .filter(
-            GarminActivity.user_id == uid,
-            GarminActivity.start_time.isnot(None),
-            GarminActivity.start_time >= cutoff,
-        )
-        .order_by(desc(GarminActivity.start_time))
-        .limit(20)
-        .all()
-    )
-    strava_rows = (
-        db.query(StravaActivity)
-        .filter(
-            StravaActivity.user_id == uid,
-            StravaActivity.start_date >= cutoff,
-        )
-        .order_by(desc(StravaActivity.start_date))
-        .limit(20)
-        .all()
-    )
-    today_metric = (
-        db.query(DailyMetrics)
-        .filter(DailyMetrics.user_id == uid)
-        .order_by(desc(DailyMetrics.date))
-        .first()
-    )
-
+    acts, strava_rows, today_metric = _fetch_recent_context(db, uid)
     act_dicts = [activity_to_dict(a) for a in acts]
     strava_dicts = [strava_activity_to_dict(a) for a in strava_rows]
     met_dicts = [daily_metrics_to_dict(today_metric)] if today_metric else []

@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM models for Garmin AI Coach."""
+"""SQLAlchemy ORM models for AI Coach."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ class UserSettings(Base):
 
 
 class GarminActivity(Base):
-    """Synced activity summary from Garmin Connect."""
+    """Synced activity from Garmin CSV export or OAuth."""
 
     __tablename__ = "garmin_activities"
 

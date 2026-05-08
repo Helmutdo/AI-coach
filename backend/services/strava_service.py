@@ -2,8 +2,8 @@
 
 # Strava Developer Setup (one time):
 # 1. Go to https://www.strava.com/settings/api
-# 2. Create an app — name: "Garmin AI Coach", website: your Vercel URL
-# 3. Authorization Callback Domain: your Railway domain (e.g. garmin-trainer-production.up.railway.app)
+# 2. Create an app — name: "AI Coach", website: your Vercel URL
+# 3. Authorization Callback Domain: your Railway domain (e.g. ai-coach-production.up.railway.app)
 # 4. Copy Client ID and Client Secret to your .env
 #
 # Environment (backend .env and Railway):

@@ -1,5 +1,5 @@
 /**
- * Typed Axios client for the Garmin AI Coach FastAPI backend.
+ * Typed Axios client for the AI Coach FastAPI backend.
  * Set NEXT_PUBLIC_API_URL (default http://127.0.0.1:8000).
  * Sends X-User-Id from the Zustand store (set after POST /api/users/me).
  */
@@ -8,10 +8,7 @@ import axios, { type AxiosInstance } from "axios";
 
 import { useAppStore } from "@/store/appStore";
 
-const baseURL =
-  typeof window !== "undefined"
-    ? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000"
-    : process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 export const api: AxiosInstance = axios.create({
   baseURL,
