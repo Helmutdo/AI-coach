@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 
-import { uploadGarminCSV } from "@/lib/api";
+import { getGarminStatus, uploadGarminCSV } from "@/lib/api";
+import { useAppStore } from "@/store/appStore";
 
 function Spinner({ className }: { className?: string }) {
   return (
@@ -45,6 +46,28 @@ export function GarminCSVUpload({ onUploaded }: GarminCSVUploadProps) {
     try {
       const res = await uploadGarminCSV(file);
       setResult({ inserted: res.inserted, skipped: res.skipped, errors: res.errors ?? [], skip_reasons: res.skip_reasons });
+
+      // Clear any stored "skipped garmin" flags so dashboard banner disappears
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("onboarding_skipped_garmin");
+        localStorage.removeItem("banner_dismissed_garmin");
+      }
+
+      // Refresh hasGarminData in store immediately
+      try {
+        const status = await getGarminStatus();
+        useAppStore.getState().setStatusFromApi({
+          garminActive: status.active,
+          garminHasData: status.has_data,
+          stravaConnected: useAppStore.getState().stravaConnected,
+          stravaAthleteName: useAppStore.getState().stravaAthleteName,
+          aiConfigured: useAppStore.getState().aiConfigured,
+          aiProvider: useAppStore.getState().aiProvider,
+        });
+      } catch {
+        // Non-critical — store will update on next navigation
+      }
+
       await onUploaded?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Upload failed");
