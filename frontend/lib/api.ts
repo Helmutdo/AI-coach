@@ -150,6 +150,20 @@ export type CoachChatResponse = {
   provider_error?: boolean;
 };
 
+export type AthleteProfileData = {
+  sex: "male" | "female" | "other";
+  birth_year: number;
+  weight_kg: number;
+  height_cm: number;
+  injuries: string;
+  hours_per_week?: number | null;
+  experience?: "beginner" | "amateur" | "competitive" | null;
+  years_in_triathlon?: number | null;
+  target_distance?: "sprint" | "olympic" | "70.3" | "ironman" | null;
+  primary_goal?: "finish" | "time_goal" | "fitness" | "weight" | null;
+  next_race_date?: string | null;
+};
+
 // ——— User (backend) ———
 
 export type UserMeBody = {
@@ -171,6 +185,20 @@ export type UserMeResponse = {
 
 export async function postUsersMe(body: UserMeBody): Promise<UserMeResponse> {
   const { data } = await api.post<UserMeResponse>("/api/users/me", body);
+  return data;
+}
+
+export async function getProfile(): Promise<AthleteProfileData | null> {
+  try {
+    const { data } = await api.get<AthleteProfileData>("/api/profile");
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveProfile(profile: AthleteProfileData): Promise<AthleteProfileData> {
+  const { data } = await api.post<AthleteProfileData>("/api/profile", profile);
   return data;
 }
 
