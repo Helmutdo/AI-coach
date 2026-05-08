@@ -374,6 +374,16 @@ export default function ActivitiesPage() {
                               <div><span className="text-zinc-500">Max HR: </span>{u.data.max_heartrate ?? "—"}</div>
                               <div><span className="text-zinc-500">Avg power: </span>{u.data.avg_watts != null ? `${u.data.avg_watts.toFixed(0)} W` : "—"}</div>
                               <div><span className="text-zinc-500">PRs: </span>{u.data.pr_count ?? "—"}</div>
+                              <div>
+                                <a
+                                  href={`https://www.strava.com/activities/${u.data.strava_id}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-bold text-[#FC5200] underline"
+                                >
+                                  View on Strava
+                                </a>
+                              </div>
                             </>
                           ) : (
                             <>

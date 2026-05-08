@@ -124,12 +124,8 @@ export function StravaConnectButton({
         {loading ? (
           <Spinner className="h-5 w-5 text-white" />
         ) : (
-          <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-white/15 text-lg font-bold text-white"
-            aria-hidden
-          >
-            S
-          </span>
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src="/strava-logo.svg" alt="" aria-hidden width={32} height={32} className="shrink-0" />
         )}
         {loading ? "Redirecting…" : "Connect with Strava"}
       </button>
