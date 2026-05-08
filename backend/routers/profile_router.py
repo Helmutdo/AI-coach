@@ -33,7 +33,7 @@ def format_profile_for_prompt(profile: AthleteProfile) -> str:
     if profile.target_distance or profile.primary_goal:
         dist = profile.target_distance or "unknown"
         goal = profile.primary_goal.replace("_", " ") if profile.primary_goal else "unspecified"
-        dist_label = dist.upper() if dist == "70.3" else dist.capitalize()
+        dist_label = dist if dist == "70.3" else dist.capitalize()
         parts.append(f"Target: {dist_label}. Goal: {goal}.")
     if profile.injuries and profile.injuries.lower() != "none":
         parts.append(f"Health notes: {profile.injuries}.")
