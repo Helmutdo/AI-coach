@@ -60,8 +60,8 @@ export type GarminLoginResponse = {
 export type GarminStatusResponse = {
   active: boolean;
   oauth_tokens_present: boolean;
-  /** Garmin account email when connected and stored on the server */
   garmin_email: string | null;
+  has_data: boolean;
 };
 
 export type GarminSyncResponse = {
