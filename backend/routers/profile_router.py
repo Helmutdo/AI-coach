@@ -67,7 +67,7 @@ def upsert_profile(
     if row is None:
         row = AthleteProfile(user_id=uid)
         db.add(row)
-    for field, value in body.model_dump().items():
+    for field, value in body.model_dump(exclude_unset=True).items():
         setattr(row, field, value)
     db.commit()
     db.refresh(row)
