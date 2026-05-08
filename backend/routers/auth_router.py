@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import UserSettings
+from models.models import GarminActivity, UserSettings
 from services.garmin_service import (
     GarminService,
     clear_garmin_token_files,
@@ -108,10 +108,9 @@ def garmin_status(
     ):
         garmin_email = (row.garmin_email or "").strip()
 
-    from models.models import GarminActivity as _GA
     count = (
-        db.query(func.count(_GA.id))
-        .filter(_GA.user_id == uid)
+        db.query(func.count(GarminActivity.id))
+        .filter(GarminActivity.user_id == uid)
         .scalar()
         or 0
     )
