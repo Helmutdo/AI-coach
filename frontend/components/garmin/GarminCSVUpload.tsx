@@ -30,7 +30,12 @@ export type GarminCSVUploadProps = {
 export function GarminCSVUpload({ onUploaded }: GarminCSVUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [result, setResult] = useState<{
+    inserted: number;
+    skipped: number;
+    errors: string[];
+    skip_reasons?: { already_imported: number; api_duplicate: number; bad_date: number; empty_row: number };
+  } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   async function handleFile(file: File) {
@@ -39,7 +44,7 @@ export function GarminCSVUpload({ onUploaded }: GarminCSVUploadProps) {
     setResult(null);
     try {
       const res = await uploadGarminCSV(file);
-      setResult({ inserted: res.inserted, skipped: res.skipped });
+      setResult({ inserted: res.inserted, skipped: res.skipped, errors: res.errors ?? [], skip_reasons: res.skip_reasons });
       await onUploaded?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Upload failed");
@@ -82,9 +87,32 @@ export function GarminCSVUpload({ onUploaded }: GarminCSVUploadProps) {
       </button>
 
       {result && (
-        <p className="text-sm text-emerald-400">
-          {result.inserted} activities imported, {result.skipped} skipped.
-        </p>
+        <div className="space-y-1">
+          <p className={`text-sm ${result.inserted > 0 ? "text-emerald-400" : "text-zinc-400"}`}>
+            {result.inserted} activities imported, {result.skipped} skipped.
+          </p>
+          {result.skipped > 0 && result.skip_reasons && (
+            <ul className="text-xs text-zinc-500 space-y-0.5 pl-2">
+              {result.skip_reasons.already_imported > 0 && (
+                <li>· {result.skip_reasons.already_imported} already imported (duplicates)</li>
+              )}
+              {result.skip_reasons.api_duplicate > 0 && (
+                <li>· {result.skip_reasons.api_duplicate} matched Garmin API activity</li>
+              )}
+              {result.skip_reasons.bad_date > 0 && (
+                <li>· {result.skip_reasons.bad_date} bad date format</li>
+              )}
+              {result.skip_reasons.empty_row > 0 && (
+                <li>· {result.skip_reasons.empty_row} empty rows</li>
+              )}
+            </ul>
+          )}
+          {result.errors.length > 0 && (
+            <ul className="text-xs text-amber-400 space-y-0.5 pl-2">
+              {result.errors.slice(0, 5).map((e, i) => <li key={i}>· {e}</li>)}
+            </ul>
+          )}
+        </div>
       )}
       {err && <p className="text-sm text-red-400">{err}</p>}
     </div>

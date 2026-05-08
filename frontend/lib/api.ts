@@ -273,6 +273,12 @@ export type CSVUploadResponse = {
   skipped: number;
   errors: string[];
   total_rows: number;
+  skip_reasons?: {
+    already_imported: number;
+    api_duplicate: number;
+    bad_date: number;
+    empty_row: number;
+  };
 };
 
 export async function uploadGarminCSV(file: File): Promise<CSVUploadResponse> {

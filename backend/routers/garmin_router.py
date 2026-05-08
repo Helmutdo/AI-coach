@@ -209,6 +209,10 @@ def upload_garmin_csv(
 
     inserted = 0
     skipped = 0
+    skip_duplicate = 0
+    skip_api_dup = 0
+    skip_bad_date = 0
+    skip_empty = 0
     errors: list[str] = []
 
     # Preload Strava start dates for dedup (within the CSV date range)
@@ -234,6 +238,7 @@ def upload_garmin_csv(
             fecha_raw = row.get("Fecha", "").strip()
             if not fecha_raw or fecha_raw == "--":
                 skipped += 1
+                skip_empty += 1
                 continue
 
             try:
@@ -242,6 +247,7 @@ def upload_garmin_csv(
             except ValueError:
                 errors.append(f"Row {row_num}: bad date format '{fecha_raw}'")
                 skipped += 1
+                skip_bad_date += 1
                 continue
 
             tipo_raw = row.get("Tipo de actividad", "").strip()
@@ -260,6 +266,7 @@ def upload_garmin_csv(
             )
             if exists:
                 skipped += 1
+                skip_duplicate += 1
                 continue
 
             # Skip if a Garmin API activity exists within ±5 min (non-CSV)
@@ -278,6 +285,7 @@ def upload_garmin_csv(
             )
             if dup:
                 skipped += 1
+                skip_api_dup += 1
                 continue
 
             dist_km = _parse_float(row.get("Distancia", ""))
@@ -321,6 +329,12 @@ def upload_garmin_csv(
         "skipped": skipped,
         "errors": errors[:20],
         "total_rows": inserted + skipped,
+        "skip_reasons": {
+            "already_imported": skip_duplicate,
+            "api_duplicate": skip_api_dup,
+            "bad_date": skip_bad_date,
+            "empty_row": skip_empty,
+        },
     }
 
 
