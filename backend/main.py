@@ -19,7 +19,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from database.database import SessionLocal, init_db
-from routers import auth_router, coach_router, garmin_router, strava_router, users_router
+from routers import auth_router, coach_router, garmin_router, profile_router, strava_router, users_router
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,7 @@ app.include_router(users_router.router, prefix="/api")
 app.include_router(auth_router.router, prefix="/api")
 app.include_router(strava_router.router, prefix="/api")
 app.include_router(garmin_router.router, prefix="/api")
+app.include_router(profile_router.router, prefix="/api")
 app.include_router(coach_router.router, prefix="/api")
 
 
