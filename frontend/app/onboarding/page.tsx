@@ -36,6 +36,7 @@ export default function OnboardingPage() {
   const { data: session, status } = useSession();
   const userId = useAppStore((s) => s.userId);
   const garminConnected = useAppStore((s) => s.garminConnected);
+  const hasGarminData = useAppStore((s) => s.hasGarminData);
   const stravaConnected = useAppStore((s) => s.stravaConnected);
   const stravaAthleteName = useAppStore((s) => s.stravaAthleteName);
   const setStatusFromApi = useAppStore((s) => s.setStatusFromApi);
@@ -48,7 +49,7 @@ export default function OnboardingPage() {
   const displayName = session?.user?.name || session?.user?.email || "there";
   const avatar = session?.user?.image;
 
-  const anyFitnessConnected = garminConnected || stravaConnected || csvUploaded;
+  const anyFitnessConnected = garminConnected || hasGarminData || stravaConnected || csvUploaded;
 
   const refreshStatus = useCallback(async () => {
     if (!userId) return;
