@@ -13,8 +13,8 @@ function formatSync(d: Date | null): string {
 }
 
 export function TopBar() {
-  const { garminConnected, stravaConnected, lastSync, setStatusFromApi, userId } = useAppStore();
-  const fitnessConnected = garminConnected || stravaConnected;
+  const { garminConnected, hasGarminData, stravaConnected, lastSync, setStatusFromApi, userId } = useAppStore();
+  const fitnessConnected = garminConnected || hasGarminData || stravaConnected;
 
   useEffect(() => {
     if (!userId) return;
@@ -29,6 +29,7 @@ export function TopBar() {
         if (!cancelled) {
           setStatusFromApi({
             garminActive: g.active,
+            garminHasData: g.has_data,
             stravaConnected: st.connected,
             stravaOAuthConfigured: st.oauth_configured ?? true,
             stravaAthleteName: st.athlete_name,
@@ -40,6 +41,7 @@ export function TopBar() {
         if (!cancelled) {
           setStatusFromApi({
             garminActive: false,
+            garminHasData: false,
             stravaConnected: false,
             stravaAthleteName: null,
             aiConfigured: false,

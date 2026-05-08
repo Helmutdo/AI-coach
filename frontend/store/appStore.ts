@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export type AppStore = {
   garminConnected: boolean;
+  /** True when at least one GarminActivity row exists for this user (includes CSV imports). Independent of OAuth. */
   hasGarminData: boolean;
   stravaConnected: boolean;
   /** From GET /api/strava/status — false if server env lacks Strava OAuth vars */
@@ -20,7 +21,7 @@ export type AppStore = {
   setUserId: (id: string | null) => void;
   setStatusFromApi: (g: {
     garminActive: boolean;
-    garminHasData: boolean;
+    garminHasData?: boolean;
     stravaConnected: boolean;
     stravaOAuthConfigured?: boolean;
     stravaAthleteName: string | null;
@@ -83,7 +84,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   }) =>
     set({
       garminConnected: garminActive,
-      hasGarminData: garminHasData,
+      hasGarminData: garminHasData ?? get().hasGarminData,
       stravaConnected,
       stravaOAuthConfigured: stravaOAuthConfigured ?? true,
       stravaAthleteName,
@@ -92,7 +93,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       onboardingComplete:
         hasFitnessSource({
           garminConnected: garminActive,
-          hasGarminData: garminHasData,
+          hasGarminData: garminHasData ?? get().hasGarminData,
           stravaConnected,
         }) && aiConfigured,
     }),

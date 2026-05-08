@@ -60,6 +60,7 @@ export default function OnboardingPage() {
       ]);
       setStatusFromApi({
         garminActive: g.active,
+        garminHasData: g.has_data,
         stravaConnected: st.connected,
         stravaOAuthConfigured: st.oauth_configured ?? true,
         stravaAthleteName: st.athlete_name,
