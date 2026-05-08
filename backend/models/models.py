@@ -210,3 +210,37 @@ class ChatMessage(Base):
         server_default=func.now(),
     )
     context_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
+
+class AthleteProfile(Base):
+    """Athlete physical profile and training goals for personalized AI coaching."""
+
+    __tablename__ = "athlete_profiles"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    sex: Mapped[str] = mapped_column(String(16), nullable=False)
+    birth_year: Mapped[int] = mapped_column(Integer, nullable=False)
+    weight_kg: Mapped[float] = mapped_column(Float, nullable=False)
+    height_cm: Mapped[float] = mapped_column(Float, nullable=False)
+    injuries: Mapped[str] = mapped_column(Text, nullable=False)
+    hours_per_week: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    experience: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    years_in_triathlon: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    target_distance: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    primary_goal: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    next_race_date: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
