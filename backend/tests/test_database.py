@@ -26,6 +26,7 @@ def test_lifespan_init_db_creates_tables():
         from database.database import engine
         insp = inspect(engine)
         assert sorted(insp.get_table_names()) == [
+            "athlete_profiles",
             "chat_messages",
             "daily_metrics",
             "garmin_activities",
