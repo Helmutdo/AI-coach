@@ -15,13 +15,14 @@ type UnifiedActivity =
   | { source: "garmin" | "csv"; data: GarminActivityRow }
   | { source: "strava"; data: StravaActivityRow };
 
-type Period = "30d" | "90d" | "6m" | "1y";
+type Period = "30d" | "90d" | "6m" | "1y" | "all";
 
 const PERIODS: { value: Period; label: string; days: number; limit: number }[] = [
   { value: "30d", label: "30 days", days: 30, limit: 150 },
   { value: "90d", label: "3 months", days: 90, limit: 250 },
   { value: "6m", label: "6 months", days: 180, limit: 400 },
-  { value: "1y", label: "1 year", days: 365, limit: 500 },
+  { value: "1y", label: "1 year", days: 365, limit: 700 },
+  { value: "all", label: "All time", days: 0, limit: 1000 },
 ];
 
 function fmtDuration(sec: number | null) {
@@ -99,7 +100,7 @@ export default function ActivitiesPage() {
   const userId = useAppStore((s) => s.userId);
   const { garminConnected, stravaConnected } = useAppStore();
 
-  const [period, setPeriod] = useState<Period>("30d");
+  const [period, setPeriod] = useState<Period>("all");
   const [garminRows, setGarminRows] = useState<GarminActivityRow[]>([]);
   const [stravaRows, setStravaRows] = useState<StravaActivityRow[]>([]);
   const [loading, setLoading] = useState(false);

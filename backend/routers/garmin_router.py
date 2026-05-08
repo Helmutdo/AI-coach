@@ -137,17 +137,16 @@ def sync_garmin(
 def list_activities(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(100, ge=1, le=500),
-    days: int = Query(30, ge=1, le=400),
+    limit: int = Query(100, ge=1, le=1000),
+    days: int = Query(30, ge=0, le=3650),
 ) -> list[dict[str, Any]]:
     uid = uuid.UUID(user_id)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    q = db.query(GarminActivity).filter(GarminActivity.user_id == uid)
+    if days > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        q = q.filter(GarminActivity.start_time >= cutoff)
     rows = (
-        db.query(GarminActivity)
-        .filter(
-            GarminActivity.user_id == uid,
-            GarminActivity.start_time >= cutoff,
-        )
+        q
         .order_by(desc(GarminActivity.start_time), desc(GarminActivity.id))
         .limit(limit)
         .all()
