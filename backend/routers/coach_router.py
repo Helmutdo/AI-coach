@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import ChatMessage, DailyMetrics, GarminActivity, StravaActivity
+from models.models import AthleteProfile, ChatMessage, DailyMetrics, GarminActivity, StravaActivity
+from routers.profile_router import format_profile_for_prompt
 from orm_serializers import (
     activity_to_dict,
     daily_metrics_to_dict,
@@ -103,6 +104,18 @@ def _integration_flags(settings: Any) -> tuple[bool, bool, str | None]:
     return garmin_connected, strava_connected, strava_name
 
 
+def _athlete_profile_block(db: Session, user_id: str) -> str:
+    """Return formatted profile string or empty string if no profile set."""
+    try:
+        uid = uuid.UUID(user_id)
+        profile = db.query(AthleteProfile).filter(AthleteProfile.user_id == uid).first()
+        if profile:
+            return format_profile_for_prompt(profile)
+    except Exception:
+        pass
+    return ""
+
+
 @router.post("/chat")
 @limiter.limit("20/minute")
 def coach_chat(
@@ -170,6 +183,10 @@ def coach_chat(
         .all()
     )
     history = [{"role": m.role, "content": m.content} for m in reversed(recent)]
+
+    profile_block = _athlete_profile_block(db, user_id)
+    if profile_block:
+        context = f"{profile_block}\n\n{context}"
 
     try:
         reply = ai.chat(
