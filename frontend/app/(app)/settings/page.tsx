@@ -275,6 +275,7 @@ export default function SettingsPage() {
                 }}
               />
             </div>
+            <p className="mt-3 text-xs text-zinc-600">Compatible with Strava</p>
           </div>
         </div>
       </section>

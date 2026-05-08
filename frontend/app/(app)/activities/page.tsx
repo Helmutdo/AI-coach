@@ -403,6 +403,9 @@ export default function ActivitiesPage() {
             })}
           </tbody>
         </table>
+        {stravaRows.length > 0 && (
+          <p className="mt-2 px-1 text-xs text-zinc-600">Compatible with Strava</p>
+        )}
         {!loading && filtered.length === 0 && !err && (
           <div className="flex flex-col items-center gap-4 px-4 py-16 text-center">
             {unified.length === 0 ? (
