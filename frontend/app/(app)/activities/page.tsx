@@ -393,7 +393,25 @@ export default function ActivitiesPage() {
           </tbody>
         </table>
         {!loading && filtered.length === 0 && !err && (
-          <p className="px-4 py-8 text-center text-sm text-zinc-500">No activities found.</p>
+          <div className="flex flex-col items-center gap-4 px-4 py-16 text-center">
+            {unified.length === 0 ? (
+              <>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="h-10 w-10 text-zinc-600">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                </svg>
+                <p className="text-sm font-medium text-zinc-300">No training data yet</p>
+                <p className="text-sm text-zinc-500">Upload a Garmin CSV or connect Strava to see your activities.</p>
+                <a
+                  href="/settings"
+                  className="mt-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-700"
+                >
+                  Go to Settings →
+                </a>
+              </>
+            ) : (
+              <p className="text-sm text-zinc-500">No activities match the current filters.</p>
+            )}
+          </div>
         )}
       </div>
     </div>
