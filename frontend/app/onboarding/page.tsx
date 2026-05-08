@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useState } from "react";
 
-import { GarminLoginCard } from "@/components/garmin/GarminLoginCard";
+import { GarminCSVUpload } from "@/components/garmin/GarminCSVUpload";
 import { StravaConnectButton } from "@/components/strava/StravaConnectButton";
 import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
@@ -42,11 +42,12 @@ export default function OnboardingPage() {
 
   const [step, setStep] = useState(1);
   const [fitnessProvider, setFitnessProvider] = useState<FitnessProviderStep>("choice");
+  const [csvUploaded, setCsvUploaded] = useState(false);
 
   const displayName = session?.user?.name || session?.user?.email || "there";
   const avatar = session?.user?.image;
 
-  const anyFitnessConnected = garminConnected || stravaConnected;
+  const anyFitnessConnected = garminConnected || stravaConnected || csvUploaded;
 
   const refreshStatus = useCallback(async () => {
     if (!userId) return;
@@ -156,7 +157,7 @@ export default function OnboardingPage() {
             {fitnessProvider === "choice" && (
               <>
                 <p className="text-center text-zinc-400">
-                  Choose whether you want to use Garmin Connect or Strava to sync your activities.
+                  Choose how to import your training data. You can add the other source later in Settings.
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <button
@@ -165,7 +166,7 @@ export default function OnboardingPage() {
                     className="flex flex-col items-start rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 text-left transition hover:border-emerald-600/50 hover:bg-zinc-900"
                   >
                     <span className="text-lg font-semibold text-zinc-100">Use Garmin</span>
-                    <span className="mt-1 text-sm text-zinc-500">Garmin Connect — sign in with your account</span>
+                    <span className="mt-1 text-sm text-zinc-500">Upload a CSV export from Garmin Connect</span>
                   </button>
                   <button
                     type="button"
@@ -173,7 +174,7 @@ export default function OnboardingPage() {
                     className="flex flex-col items-start rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 text-left transition hover:border-emerald-600/50 hover:bg-zinc-900"
                   >
                     <span className="text-lg font-semibold text-zinc-100">Use Strava</span>
-                    <span className="mt-1 text-sm text-zinc-500">Strava — connect with OAuth (no app password)</span>
+                    <span className="mt-1 text-sm text-zinc-500">Connect with OAuth — no password needed</span>
                   </button>
                 </div>
                 <div className="text-center">
@@ -199,15 +200,19 @@ export default function OnboardingPage() {
                 </button>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
                   <h2 className="text-lg font-semibold text-zinc-100">Garmin Connect</h2>
-                  <p className="mt-1 text-sm text-zinc-500">Direct sync via credentials</p>
-                  <div className="mt-4 min-h-[280px]">
-                    <GarminLoginCard
-                      userId={userId}
-                      showSuccessAnimation
-                      onConnected={async () => {
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Export your activities from Garmin Connect → Activities → Export CSV, then upload here.
+                  </p>
+                  <div className="mt-6">
+                    <GarminCSVUpload
+                      onUploaded={async () => {
+                        setCsvUploaded(true);
                         await refreshStatus();
                       }}
                     />
+                    {csvUploaded && (
+                      <p className="mt-3 text-sm text-emerald-400">✓ Data imported — you can continue.</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -247,11 +252,10 @@ export default function OnboardingPage() {
                 <div className="flex flex-col items-center gap-3">
                   <button
                     type="button"
-                    disabled={!anyFitnessConnected}
                     onClick={() => setStep(3)}
-                    className="rounded-xl bg-emerald-600 px-8 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl bg-emerald-600 px-8 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
                   >
-                    Next →
+                    {anyFitnessConnected ? "Next →" : "Continue anyway →"}
                   </button>
                   <button
                     type="button"

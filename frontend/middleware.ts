@@ -59,10 +59,8 @@ export default auth(async (req) => {
     const ai = (await aiRes.json()) as { configured?: boolean };
     const st = (await stRes.json()) as { connected?: boolean };
 
-    const garminOk = g.active === true;
-    const stravaOk = st.connected === true;
     const aiOk = ai.configured === true;
-    const onboardingDone = (garminOk || stravaOk) && aiOk;
+    const onboardingDone = aiOk;
 
     if (!onboardingDone) {
       if (isAppRoute(pathname) && pathname !== "/onboarding") {
