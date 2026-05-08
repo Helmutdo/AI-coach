@@ -60,7 +60,7 @@ const HRV_SCORE: Record<string, number> = {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SportType  = "swim" | "bike" | "run" | "other";
-type DateRange  = 7 | 30 | 90;
+type DateRange  = 7 | 30 | 90 | 180 | 365 | 0;
 type SportFilter = SportType | "all";
 
 interface MergedActivity {
@@ -111,6 +111,7 @@ function isoDate(d: Date): string {
 }
 
 function daysAgo(n: number): Date {
+  if (n === 0) return new Date("2000-01-01");
   const d = new Date();
   d.setDate(d.getDate() - n);
   d.setHours(0, 0, 0, 0);
@@ -440,10 +441,12 @@ function SyncToast({
 function OnboardingBanners() {
   const [showGarmin, setShowGarmin] = useState(false);
   const [showAI, setShowAI] = useState(false);
+  const hasGarminData = useAppStore((s) => s.hasGarminData);
 
   useEffect(() => {
     try {
       setShowGarmin(
+        !hasGarminData &&
         localStorage.getItem("onboarding_skipped_garmin") === "true" &&
         localStorage.getItem("banner_dismissed_garmin") !== "true",
       );
@@ -452,7 +455,7 @@ function OnboardingBanners() {
         localStorage.getItem("banner_dismissed_ai") !== "true",
       );
     } catch { /* ignore */ }
-  }, []);
+  }, [hasGarminData]);
 
   function dismissGarmin() {
     try { localStorage.setItem("banner_dismissed_garmin", "true"); } catch { /* ignore */ }
@@ -1127,10 +1130,12 @@ export default function DashboardPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const apiDays = dateRange === 0 ? 0 : dateRange + 42;
+    const apiLimit = dateRange === 0 ? 2000 : Math.min(dateRange * 3 + 100, 2000);
     try {
       const [g, s, m] = await Promise.all([
-        getGarminActivities({ limit: 60 }).catch(() => [] as GarminActivityRow[]),
-        getStravaActivities({ limit: 60 }).catch(() => [] as StravaActivityRow[]),
+        getGarminActivities({ limit: apiLimit, days: apiDays }).catch(() => [] as GarminActivityRow[]),
+        getStravaActivities({ limit: apiLimit, days: apiDays }).catch(() => [] as StravaActivityRow[]),
         getGarminDailyMetrics({ days: 42 }).catch(() => [] as DailyMetricRow[]),
       ]);
       setGarminActs(g);
@@ -1139,7 +1144,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => {
     if (!userId) return;
@@ -1368,17 +1373,24 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/60 p-1 gap-1">
-          {([7, 30, 90] as const).map((d) => (
+          {([
+            { value: 7, label: "7d" },
+            { value: 30, label: "30d" },
+            { value: 90, label: "3m" },
+            { value: 180, label: "6m" },
+            { value: 365, label: "1y" },
+            { value: 0, label: "All" },
+          ] as { value: DateRange; label: string }[]).map(({ value, label }) => (
             <button
-              key={d}
-              onClick={() => setDateRange(d)}
+              key={value}
+              onClick={() => setDateRange(value)}
               className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
-                dateRange === d
+                dateRange === value
                   ? "bg-zinc-700 text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
               }`}
             >
-              {d}d
+              {label}
             </button>
           ))}
         </div>
