@@ -1,10 +1,9 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   getGarminActivities,
   getStravaActivities,
-  uploadGarminCSV,
   type GarminActivityRow,
   type StravaActivityRow,
 } from "@/lib/api";
@@ -98,7 +97,7 @@ function SourceBadge({ source }: { source: string }) {
 
 export default function ActivitiesPage() {
   const userId = useAppStore((s) => s.userId);
-  const { garminConnected, stravaConnected } = useAppStore();
+  const stravaConnected = useAppStore((s) => s.stravaConnected);
 
   const [period, setPeriod] = useState<Period>("all");
   const [garminRows, setGarminRows] = useState<GarminActivityRow[]>([]);
@@ -109,11 +108,6 @@ export default function ActivitiesPage() {
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [sourceFilter, setSourceFilter] = useState<"all" | "garmin" | "csv" | "strava">("all");
 
-  // CSV upload state
-  const [csvUploading, setCsvUploading] = useState(false);
-  const [csvMsg, setCsvMsg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const periodCfg = PERIODS.find((p) => p.value === period) ?? PERIODS[0];
 
   useEffect(() => {
@@ -121,47 +115,23 @@ export default function ActivitiesPage() {
     setLoading(true);
     setErr(null);
     const fetches: Promise<void>[] = [];
-    if (garminConnected !== false) {
-      fetches.push(
-        getGarminActivities({ limit: periodCfg.limit, days: periodCfg.days })
-          .then(setGarminRows)
-          .catch(() => {}),
-      );
-    }
+    fetches.push(
+      getGarminActivities({ limit: periodCfg.limit, days: periodCfg.days })
+        .then(setGarminRows)
+        .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load Garmin activities")),
+    );
     if (stravaConnected) {
       fetches.push(
         getStravaActivities({ limit: periodCfg.limit, days: periodCfg.days })
           .then(setStravaRows)
-          .catch(() => {}),
+          .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load Strava activities")),
       );
     }
     Promise.all(fetches)
       .catch((e) => setErr(e instanceof Error ? e.message : "Failed to load activities"))
       .finally(() => setLoading(false));
-  }, [userId, garminConnected, stravaConnected, periodCfg.days, periodCfg.limit]);
+  }, [userId, stravaConnected, periodCfg.days, periodCfg.limit]);
 
-  async function handleCSVUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCsvUploading(true);
-    setCsvMsg(null);
-    try {
-      const res = await uploadGarminCSV(file);
-      setCsvMsg(
-        `Imported ${res.inserted} activities (${res.skipped} skipped).${
-          res.errors.length ? ` ${res.errors.length} errors.` : ""
-        }`
-      );
-      // Reload garmin activities to show newly imported ones
-      const fresh = await getGarminActivities({ limit: periodCfg.limit, days: periodCfg.days });
-      setGarminRows(fresh);
-    } catch (ex) {
-      setCsvMsg(ex instanceof Error ? ex.message : "Upload failed");
-    } finally {
-      setCsvUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  }
 
   const unified: UnifiedActivity[] = useMemo(() => {
     const out: UnifiedActivity[] = [
@@ -253,62 +223,8 @@ export default function ActivitiesPage() {
             </select>
           </div>
 
-          {/* CSV upload */}
-          <div>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv"
-              className="hidden"
-              onChange={handleCSVUpload}
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={csvUploading || !userId}
-              className="inline-flex items-center gap-2 rounded-lg border border-violet-500/50 bg-violet-500/10 px-4 py-2 text-sm font-medium text-violet-300 hover:bg-violet-500/20 disabled:opacity-50"
-            >
-              {csvUploading ? (
-                <>
-                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  Importing…
-                </>
-              ) : (
-                <>
-                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M9.25 13.25a.75.75 0 001.5 0V4.636l2.955 3.129a.75.75 0 001.09-1.03l-4.25-4.5a.75.75 0 00-1.09 0l-4.25 4.5a.75.75 0 101.09 1.03L9.25 4.636v8.614z" />
-                    <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
-                  </svg>
-                  Upload CSV
-                </>
-              )}
-            </button>
-          </div>
         </div>
       </div>
-
-      {/* CSV upload result */}
-      {csvMsg && (
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
-            csvMsg.includes("error") || csvMsg.includes("failed")
-              ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
-              : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
-          }`}
-        >
-          {csvMsg}
-          <button
-            type="button"
-            onClick={() => setCsvMsg(null)}
-            className="ml-3 text-xs opacity-60 hover:opacity-100"
-          >
-            ✕
-          </button>
-        </div>
-      )}
 
       {err && (
         <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
