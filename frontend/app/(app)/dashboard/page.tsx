@@ -652,9 +652,9 @@ function WeeklyTSSChart({ data, easyPct }: { data: WeekPoint[]; easyPct: number 
             <YAxis stroke="#52525b" fontSize={10} />
             <Tooltip
               contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: unknown, name: string) => [
+              formatter={(v: unknown, name: unknown) => [
                 `${v as number} TSS`,
-                name.charAt(0).toUpperCase() + name.slice(1),
+                String(name).charAt(0).toUpperCase() + String(name).slice(1),
               ]}
             />
             <Bar dataKey="swim" stackId="a" fill={SPORT.swim.bg} />
@@ -872,7 +872,7 @@ function RecoveryPanel({
               <XAxis dataKey="day" stroke="#52525b" fontSize={8} />
               <Tooltip
                 contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 11 }}
-                formatter={(_: number, __: string, item: { payload?: { label?: string } }) => [
+                formatter={(_: unknown, __: unknown, item: { payload?: { label?: string } }) => [
                   item.payload?.label ?? "—",
                   "HRV",
                 ]}
@@ -969,11 +969,13 @@ function PMCChart({ data }: { data: DayPMC[] }) {
             <ReferenceArea y1={-60} y2={-30} fill={CLR.danger} fillOpacity={0.07} />
             <Tooltip
               contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number, name: string) => {
-                if (name === "ctl") return [`${v.toFixed(1)}`, "CTL (Fitness)"];
-                if (name === "atl") return [`${v.toFixed(1)}`, "ATL (Fatigue)"];
-                if (name === "tsb") return [`${v > 0 ? "+" : ""}${v.toFixed(1)} · ${tsbLabel(v)}`, "TSB (Form)"];
-                return [v, name];
+              formatter={(v: unknown, name: unknown) => {
+                const n = String(name);
+                const num = v as number;
+                if (n === "ctl") return [`${num.toFixed(1)}`, "CTL (Fitness)"] as [string, string];
+                if (n === "atl") return [`${num.toFixed(1)}`, "ATL (Fatigue)"] as [string, string];
+                if (n === "tsb") return [`${num > 0 ? "+" : ""}${num.toFixed(1)} · ${tsbLabel(num)}`, "TSB (Form)"] as [string, string];
+                return [`${num}`, n] as [string, string];
               }}
             />
             <Line type="monotone" dataKey="ctl" stroke="#60a5fa" strokeWidth={2} dot={false} name="ctl" />

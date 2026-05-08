@@ -74,6 +74,7 @@ export type GarminSyncResponse = {
 export type AIStatusResponse = {
   configured: boolean;
   model: string | null;
+  provider?: string | null;
 };
 
 export type GarminActivityRow = {
