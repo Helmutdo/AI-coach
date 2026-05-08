@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { useCallback, useState } from "react";
 
 import { GarminCSVUpload } from "@/components/garmin/GarminCSVUpload";
+import { AthleteProfileWizard } from "@/components/profile/AthleteProfileWizard";
 import { StravaConnectButton } from "@/components/strava/StravaConnectButton";
 import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
@@ -92,7 +93,7 @@ export default function OnboardingPage() {
         className={`mx-auto ${step === 2 && fitnessProvider !== "choice" ? "max-w-5xl" : "max-w-lg"}`}
       >
         <div className="mb-8 flex items-center justify-center gap-2 text-sm text-zinc-500">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <span key={s} className="flex items-center gap-2">
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${
@@ -105,12 +106,12 @@ export default function OnboardingPage() {
               >
                 {s}
               </span>
-              {s < 3 && <span className="text-zinc-600">—</span>}
+              {s < 4 && <span className="text-zinc-600">—</span>}
             </span>
           ))}
         </div>
         <p className="mb-2 text-center text-xs uppercase tracking-wider text-zinc-500">
-          Step {step} of 3
+          Step {step} of 4
         </p>
 
         {step === 1 && (
@@ -297,14 +298,25 @@ export default function OnboardingPage() {
             </p>
             <button
               type="button"
-              onClick={() => {
+              onClick={() => setStep(4)}
+              className="mt-8 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
+            >
+              Next: Athlete Profile →
+            </button>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="mx-auto w-full max-w-lg rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8">
+            <h1 className="mb-6 text-center text-2xl font-semibold tracking-tight">
+              Tell us about yourself
+            </h1>
+            <AthleteProfileWizard
+              onComplete={() => {
                 router.push("/dashboard");
                 router.refresh();
               }}
-              className="mt-8 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500"
-            >
-              Go to Dashboard →
-            </button>
+            />
           </div>
         )}
       </div>
