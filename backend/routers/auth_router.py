@@ -12,6 +12,7 @@ from garminconnect import (
     GarminConnectConnectionError,
 )
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database.database import get_db
@@ -106,10 +107,20 @@ def garmin_status(
         "not-configured@local",
     ):
         garmin_email = (row.garmin_email or "").strip()
+
+    from models.models import GarminActivity as _GA
+    count = (
+        db.query(func.count(_GA.id))
+        .filter(_GA.user_id == uid)
+        .scalar()
+        or 0
+    )
+
     return {
         "active": active,
         "oauth_tokens_present": tokens,
         "garmin_email": garmin_email if active else None,
+        "has_data": count > 0,
     }
 
 
