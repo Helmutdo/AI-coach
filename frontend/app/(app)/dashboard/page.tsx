@@ -833,6 +833,42 @@ function HRZonesChart({
   );
 }
 
+// ─── Readiness Gauge ──────────────────────────────────────────────────────────
+
+function ReadinessGauge({ value }: { value: number }) {
+  const color = readinessColor(value);
+  const data = [{ value, fill: color }];
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: 160, height: 90 }}>
+      <RadialBarChart
+        width={160}
+        height={160}
+        cx={80}
+        cy={90}
+        innerRadius={55}
+        outerRadius={78}
+        barSize={14}
+        data={data}
+        startAngle={180}
+        endAngle={0}
+      >
+        <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+        <RadialBar
+          dataKey="value"
+          cornerRadius={7}
+          background={{ fill: "#27272a" }}
+        />
+      </RadialBarChart>
+      <div className="absolute inset-0 flex flex-col items-center justify-end pb-1">
+        <span className="font-condensed text-4xl font-bold leading-none" style={{ color }}>
+          {value}
+        </span>
+        <span className="text-[10px] text-zinc-500 uppercase tracking-widest">/ 100</span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Recovery Panel ───────────────────────────────────────────────────────────
 
 function RecoveryPanel({
@@ -871,16 +907,12 @@ function RecoveryPanel({
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4">
       <h2 className="text-sm font-semibold text-zinc-200">Recovery & Readiness</h2>
 
-      <div className="flex items-center gap-3">
-        <p className="text-5xl font-black leading-none" style={{ color: rColor }}>
-          {readiness}
+      <div className="flex flex-col items-center gap-1">
+        <ReadinessGauge value={readiness} />
+        <p className="text-sm font-semibold text-zinc-300 -mt-1">Race Readiness</p>
+        <p className="text-xs font-medium" style={{ color: rColor }}>
+          {readiness >= 70 ? "Ready to race" : readiness >= 50 ? "Building form" : "Rest needed"}
         </p>
-        <div>
-          <p className="text-sm font-semibold text-zinc-300">Race Readiness</p>
-          <p className="text-xs font-medium" style={{ color: rColor }}>
-            {readiness >= 70 ? "Ready to race" : readiness >= 50 ? "Building form" : "Rest needed"}
-          </p>
-        </div>
       </div>
 
       <div>
