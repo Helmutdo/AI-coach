@@ -206,6 +206,18 @@ export default function OnboardingPage() {
                   <p className="mt-1 text-sm text-zinc-500">
                     Export your activities from Garmin Connect → Activities → Export CSV, then upload here.
                   </p>
+                  <p className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300/80">
+                    CSV export requires{" "}
+                    <a
+                      href="https://connect.garmin.com/modern/activities"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-2 hover:text-amber-200"
+                    >
+                      Garmin Connect web
+                    </a>
+                    {" "}— not available in the mobile app.
+                  </p>
                   <div className="mt-6">
                     <GarminCSVUpload
                       onUploaded={async () => {

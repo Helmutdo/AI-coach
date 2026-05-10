@@ -246,6 +246,18 @@ export default function SettingsPage() {
               <h3 className="font-medium text-zinc-200">Garmin Connect</h3>
             </div>
             <p className="mt-1 text-xs text-zinc-500">Upload CSV from Garmin Connect</p>
+            <p className="mt-2 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-300/80">
+              CSV export is only available on{" "}
+              <a
+                href="https://connect.garmin.com/modern/activities"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline underline-offset-2 hover:text-amber-200"
+              >
+                Garmin Connect web
+              </a>
+              {" "}— not the mobile app. Go to Activities → export CSV.
+            </p>
             <div className="mt-4 flex flex-1 flex-col">
               <GarminCSVUpload onUploaded={() => refreshStatuses()} />
             </div>
