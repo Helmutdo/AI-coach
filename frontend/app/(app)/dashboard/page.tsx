@@ -1218,7 +1218,7 @@ function AIInsightBanner() {
 
 export default function DashboardPage() {
   const { data: session } = useSession();
-  const { userId } = useAppStore();
+  const { userId, hasGarminData, stravaConnected } = useAppStore();
 
   const [sportFilter, setSportFilter] = useState<SportFilter>("all");
   const [dateRange, setDateRange]     = useState<DateRange>(30);
@@ -1235,7 +1235,7 @@ export default function DashboardPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     const apiDays = dateRange === 0 ? 0 : dateRange + 42;
-    const apiLimit = dateRange === 0 ? 2000 : Math.min(dateRange * 3 + 100, 2000);
+    const apiLimit = dateRange === 0 ? 5000 : Math.min(dateRange * 5 + 200, 5000);
     try {
       const [g, s, m] = await Promise.all([
         getGarminActivities({ limit: apiLimit, days: apiDays }).catch(() => [] as GarminActivityRow[]),
@@ -1400,7 +1400,9 @@ export default function DashboardPage() {
     }
   }
 
-  const noData = !loading && merged.length === 0;
+  const hasAnySource = hasGarminData || stravaConnected;
+  const noData       = !loading && merged.length === 0 && !hasAnySource;
+  const emptyRange   = !loading && merged.length === 0 && hasAnySource;
 
   return (
     <div className="space-y-5 pb-12">
@@ -1505,13 +1507,30 @@ export default function DashboardPage() {
         <p className="text-center text-sm text-zinc-500">Loading your training data…</p>
       )}
 
-      {/* Empty state */}
+      {/* Empty state — no connected sources */}
       {noData && (
         <EmptyState
           onSyncGarmin={() => void handleSync()}
           onConnectStrava={() => void handleConnectStrava()}
           syncing={syncing}
         />
+      )}
+
+      {/* Empty range — has data but none in this period */}
+      {emptyRange && (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/30 px-8 py-12 text-center">
+          <p className="text-sm font-medium text-zinc-300">No activities in this period</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            Try a wider range — your data exists but not within the selected window.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDateRange(0)}
+            className="mt-4 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-xs font-medium text-zinc-200 hover:bg-zinc-700 cursor-pointer"
+          >
+            Show all time →
+          </button>
+        </div>
       )}
 
       {/* KPI hero row */}

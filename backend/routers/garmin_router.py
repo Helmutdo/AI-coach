@@ -137,7 +137,7 @@ def sync_garmin(
 def list_activities(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(100, ge=1, le=5000),
     days: int = Query(30, ge=0, le=3650),
 ) -> list[dict[str, Any]]:
     uid = uuid.UUID(user_id)

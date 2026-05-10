@@ -235,8 +235,8 @@ def strava_sync(
 def strava_activities(
     db: Session = Depends(get_db),
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(100, ge=1, le=500),
-    days: int = Query(30, ge=1, le=400),
+    limit: int = Query(100, ge=1, le=5000),
+    days: int = Query(30, ge=0, le=3650),
     sport_type: str | None = Query(None),
 ) -> list[dict[str, Any]]:
     from datetime import timedelta, timezone
