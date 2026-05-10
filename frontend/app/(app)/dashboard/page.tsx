@@ -841,24 +841,38 @@ function HRZonesChart({
         <h2 className="text-sm font-semibold text-zinc-200">Heart Rate Zones</h2>
         <span className="text-xs text-zinc-500">estimated from avg HR</span>
       </div>
-      <div className="h-44">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={zoneData} barSize={34}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-            <XAxis dataKey="zone" stroke="#52525b" fontSize={11} />
-            <YAxis stroke="#52525b" fontSize={10} unit="m" />
-            <Tooltip
-              contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: unknown) => [`${v as number} min`, "Time"]}
-            />
-            <Bar dataKey="minutes" radius={[4, 4, 0, 0]}>
-              {zoneData.map((_, i) => (
-                <Cell key={i} fill={ZONE_COLORS[i]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+
+      <div className="space-y-2">
+        {zoneData.map((z, i) => (
+          <div key={z.zone} className="flex items-center gap-2">
+            <span className="w-6 shrink-0 text-xs font-semibold text-zinc-500">{z.zone}</span>
+            <div className="relative flex-1 h-7 rounded-md bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full rounded-md flex items-center transition-all duration-500"
+                style={{
+                  width: `${Math.max(z.pct, 4)}%`,
+                  background: ZONE_COLORS[i],
+                  minWidth: z.pct > 0 ? "2rem" : 0,
+                }}
+              >
+                {z.pct > 8 && (
+                  <span className="pl-2 text-[11px] font-bold text-white">{z.pct}%</span>
+                )}
+              </div>
+              {z.pct <= 8 && z.pct > 0 && (
+                <span
+                  className="absolute left-full ml-1.5 top-1/2 -translate-y-1/2 text-[11px] font-semibold"
+                  style={{ color: ZONE_COLORS[i] }}
+                >
+                  {z.pct}%
+                </span>
+              )}
+            </div>
+            <span className="w-12 shrink-0 text-right text-xs text-zinc-500">{z.minutes}m</span>
+          </div>
+        ))}
       </div>
+
       <InsightBar text={insight} color={insightColor} />
     </div>
   );
