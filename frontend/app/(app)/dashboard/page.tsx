@@ -665,21 +665,29 @@ function WeeklyTSSChart({ data, easyPct }: { data: WeekPoint[]; easyPct: number 
       </div>
       <div className="h-52">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} barSize={18}>
+          <ComposedChart data={data} barSize={16}>
             <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
             <XAxis dataKey="week" stroke="#52525b" fontSize={10} />
             <YAxis stroke="#52525b" fontSize={10} />
             <Tooltip
               contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
-              formatter={(v: unknown, name: unknown) => [
-                `${v as number} TSS`,
-                String(name).charAt(0).toUpperCase() + String(name).slice(1),
-              ]}
+              formatter={(v: unknown, name: unknown) => {
+                if (String(name) === "total") return [`${v as number} TSS`, "Total"];
+                return [`${v as number} TSS`, String(name).charAt(0).toUpperCase() + String(name).slice(1)];
+              }}
             />
             <Bar dataKey="swim" stackId="a" fill={SPORT.swim.bg} />
             <Bar dataKey="bike" stackId="a" fill={SPORT.bike.bg} />
             <Bar dataKey="run"  stackId="a" fill={SPORT.run.bg}  radius={[3, 3, 0, 0]} />
-          </BarChart>
+            <Line
+              type="monotone"
+              dataKey="total"
+              stroke="#f4f4f5"
+              strokeWidth={2}
+              dot={{ r: 3, fill: "#f4f4f5", strokeWidth: 0 }}
+              activeDot={{ r: 5 }}
+            />
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
