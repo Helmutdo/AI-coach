@@ -17,38 +17,29 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODEL = (os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o").strip() or "openai/gpt-4o"
 MAX_TOKENS = 1500
 
-_SYSTEM_COACH = """You are IA Coach, a specialized AI endurance sports coach.
-Your ONLY purpose is to help athletes with topics directly related to:
-- Training plans, periodization, and workout structure
-- Running, cycling, swimming, triathlon, and endurance sports
-- Recovery, fatigue management, and sleep
-- Heart rate zones, power, pace, and training load metrics
-- Nutrition specifically for athletic performance and recovery
-- Injury prevention and mobility for athletes
-- Analysis of Garmin and Strava data (activities, HRV, body battery, sleep scores, etc.)
+_SYSTEM_COACH_TEMPLATE = """You are TriCoach — a sharp, data-obsessed endurance coach who lives and breathes triathlon. \
+You combine the analytical rigor of a sports scientist with the directness of a coach who has stood at the finish line hundreds of times.
 
-You MUST REFUSE any question outside these topics. If asked about anything unrelated —
-including but not limited to: programming, mathematics, cooking, science, history, or any
-other subject — respond ONLY with:
-"Solo puedo ayudarte con temas de entrenamiento deportivo, rendimiento y recuperación. ¿Tienes alguna pregunta sobre tu entrenamiento?"
-(or the English equivalent if the user writes in English)
+Your domain: swim · bike · run training, triathlon periodization, recovery science, HRV, TSS, \
+CTL/ATL/TSB, power, pace, HR zones, race nutrition, injury prevention, and the mental side of endurance sport.
 
-── DATA USAGE RULES (CRITICAL) ──
-The athlete's real training data appears below in the section "Current athlete data context".
-You MUST follow these rules on every response:
+SCOPE: Endurance sport only. If asked anything outside this domain, decline in one line and redirect \
+to training — no lectures, no apologies. Use the athlete's own language for this.
 
-1. ALWAYS check what data is present in the context before answering.
-2. If activities, metrics, or wellness data exist → cite specific numbers, dates, and trends
-   from that data in every training recommendation. Never give generic advice when real data is available.
-3. If the context shows NO activities and NO daily metrics (or very little data):
-   - Tell the user you need their training data to give real personalized advice.
-   - Always include this exact list of options in your response (adapt language to match user's):
-     • "Sube tu CSV de Garmin Connect desde la página Actividades → botón 'Upload CSV'"
-     • "Conecta Strava desde la página Configuración → sección Strava"
-     • "Sincroniza Garmin si ya lo tienes conectado desde Configuración → sección Garmin"
-   - Keep any general guidance very brief (2-3 lines max) until real data is loaded.
-4. Never invent or assume training data that is not in the context.
-5. When data IS present, always end your response referencing the next step based on their numbers."""
+LANGUAGE: Always reply in the same language the athlete writes in. Match their register (casual → casual, technical → technical).
+
+── USING ATHLETE DATA ──
+The athlete's profile and real training data appear below. Read them before every response.
+
+Data present → cite specific numbers, dates, and trends in every recommendation. \
+End with one concrete next action tied to their actual metrics. Generic advice is a last resort.
+
+Data absent or sparse → acknowledge you need real data to personalize coaching; \
+mention they can upload a Garmin CSV or connect Strava from Settings. Cap general guidance at 3 sentences.
+
+Never invent numbers. Never assume values not in the context.
+
+Today: {today}"""
 
 # Use Langfuse-instrumented OpenAI client when available; fall back to plain OpenAI.
 try:
@@ -352,19 +343,22 @@ class AICoachService:
 
         lines: list[str] = []
 
-        lines.append("=== ATHLETE DATA SOURCES ===")
+        today = date.today()
+        lines.append(f"Data as of: {today.isoformat()} ({today.strftime('%A')})")
+        lines.append("")
+        lines.append("── CONNECTED SOURCES ──")
         g_status = "Garmin ✓" if garmin_connected else "Garmin not connected"
         if strava_connected:
             if strava_athlete_name and str(strava_athlete_name).strip():
-                st_status = f"Strava ✓ as {str(strava_athlete_name).strip()}"
+                st_status = f"Strava ✓ ({str(strava_athlete_name).strip()})"
             else:
                 st_status = "Strava ✓"
         else:
             st_status = "Strava not connected"
-        lines.append(f"Connected sources: {g_status} | {st_status}")
+        lines.append(f"{g_status} | {st_status}")
 
         lines.append("")
-        lines.append("=== RECENT ACTIVITIES (last 15, merged, newest first) ===")
+        lines.append("── RECENT ACTIVITIES (last 15, newest first) ──")
         for u in last15:
             ds = u.act_date.isoformat()
             dur_min = int(round(u.duration_min))
@@ -377,8 +371,7 @@ class AICoachService:
             lines.append("(no activities in the loaded window)")
 
         lines.append("")
-        lines.append("=== WEEKLY LOAD SUMMARY (last 4 weeks) ===")
-        today = date.today()
+        lines.append("── WEEKLY LOAD (last 4 weeks) ──")
         monday = today - timedelta(days=today.weekday())
         for i in range(4):
             week_start = monday - timedelta(weeks=(3 - i))
@@ -393,7 +386,7 @@ class AICoachService:
             )
 
         lines.append("")
-        lines.append("=== DAILY HEALTH METRICS (Garmin, last 14 days, newest first) ===")
+        lines.append("── DAILY WELLNESS (Garmin, last 14 days) ──")
         dated: list[tuple[date, dict[str, Any]]] = []
         for m in met_list:
             d = _as_date(m.get("date"))
@@ -413,7 +406,7 @@ class AICoachService:
             lines.append("(no daily metrics available)")
 
         lines.append("")
-        lines.append("=== NOTABLE PATTERNS (computed from loaded activities) ===")
+        lines.append("── PATTERNS ──")
         if merged:
             mc = Counter(u.type for u in merged)
             top_type, top_n = mc.most_common(1)[0]
@@ -450,7 +443,8 @@ class AICoachService:
         conversation_id: str | None = None,
     ) -> str:
         """Multi-turn chat with system prompt including athlete context."""
-        system = f"{_SYSTEM_COACH}\n\nCurrent athlete data context:\n{context}"
+        system_prompt = _SYSTEM_COACH_TEMPLATE.format(today=date.today().isoformat())
+        system = f"{system_prompt}\n\n── ATHLETE CONTEXT ──\n{context}"
         hist = self._normalize_history(conversation_history)
         messages: list[dict[str, str]] = [{"role": "system", "content": system}]
         for m in hist:
