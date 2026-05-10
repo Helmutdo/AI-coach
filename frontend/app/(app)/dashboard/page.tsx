@@ -962,10 +962,19 @@ function RecoveryPanel({
 
       <div>
         <p className="mb-1.5 text-xs text-zinc-500">HRV Status — last 14 days</p>
-        <div className="h-16">
+        <div className="h-20">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={sparkData} barSize={12}>
+            <AreaChart data={sparkData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+              <defs>
+                <linearGradient id="hrvGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={CLR.fresh} stopOpacity={0.3} />
+                  <stop offset="95%" stopColor={CLR.fresh} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
               <XAxis dataKey="day" stroke="#52525b" fontSize={8} />
+              <YAxis stroke="#52525b" fontSize={8} domain={["auto", "auto"]} />
+              <ReferenceLine y={baseline} stroke="#52525b" strokeDasharray="3 3" />
               <Tooltip
                 contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 11 }}
                 formatter={(_: unknown, __: unknown, item: { payload?: { label?: string } }) => [
@@ -973,23 +982,16 @@ function RecoveryPanel({
                   "HRV",
                 ]}
               />
-              <Bar dataKey="score">
-                {sparkData.map((d, i) => (
-                  <Cell
-                    key={i}
-                    fill={
-                      d.score == null
-                        ? "#3f3f46"
-                        : d.score >= baseline
-                        ? CLR.fresh
-                        : d.score >= baseline * 0.85
-                        ? "#60a5fa"
-                        : CLR.danger
-                    }
-                  />
-                ))}
-              </Bar>
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="score"
+                stroke={CLR.fresh}
+                strokeWidth={2}
+                fill="url(#hrvGrad)"
+                dot={{ r: 2, fill: CLR.fresh }}
+                connectNulls={false}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
