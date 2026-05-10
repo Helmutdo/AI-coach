@@ -1583,7 +1583,7 @@ export default function DashboardPage() {
           ))}
         </div>
         {compareMode === "compare" && (
-          <div className="flex gap-3 ml-2">
+          <div className="flex flex-wrap gap-3 ml-2">
             <KPICard label="Load" value={`${weeklyKpis.thisTSS} TSS`} loading={loading} prevValue={`${weeklyKpis.lastTSS} TSS`} changePct={weeklyKpis.tssChange} />
             <KPICard label="Volume" value={`${weeklyKpis.thisH}h`} loading={loading} prevValue={`${weeklyKpis.lastH}h`} changePct={weeklyKpis.hrsChange} />
             <KPICard label="Sessions" value={weeklyKpis.thisSessions} loading={loading} prevValue={weeklyKpis.lastSessions} changePct={weeklyKpis.sessionsChange} />
