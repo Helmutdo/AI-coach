@@ -721,22 +721,53 @@ function VolumeSplitPanel({ activities }: { activities: MergedActivity[] }) {
   });
 
   const totalTSS = rows.reduce((s, r) => s + r.tss, 0);
+  const totalHrs = (totalSec / 3600).toFixed(1);
+
+  const pieData = rows
+    .filter((r) => r.sec > 0)
+    .map((r) => ({ name: r.sp, value: Math.round(r.sec / 60), fill: SPORT[r.sp].bg }));
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-5">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 p-4 space-y-4">
       <h2 className="text-sm font-semibold text-zinc-200">Volume Split</h2>
 
+      <div className="flex items-center justify-center">
+        <div className="relative" style={{ width: 160, height: 160 }}>
+          <ResponsiveContainer width={160} height={160}>
+            <PieChart>
+              <Pie
+                data={pieData.length > 0 ? pieData : [{ name: "none", value: 1, fill: "#27272a" }]}
+                cx={75}
+                cy={75}
+                innerRadius={48}
+                outerRadius={70}
+                dataKey="value"
+                strokeWidth={0}
+              >
+                {pieData.map((entry) => (
+                  <Cell key={entry.name} fill={entry.fill} />
+                ))}
+              </Pie>
+              <Tooltip
+                contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: 8, fontSize: 12 }}
+                formatter={(v: unknown, name: unknown) => [`${v as number} min`, String(name)]}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="font-condensed text-3xl font-bold text-zinc-100">{totalHrs}h</span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-widest">total</span>
+          </div>
+        </div>
+      </div>
+
       <div className="flex justify-around">
-        {rows.map(({ sp, pct, hrs }) => (
-          <div key={sp} className="flex flex-col items-center gap-1">
-            <div
-              className="h-16 w-16 rounded-full flex items-center justify-center font-bold text-white text-sm shadow-lg"
-              style={{ background: SPORT[sp].bg }}
-            >
-              {pct.toFixed(0)}%
-            </div>
+        {rows.map(({ sp, hrs, pct }) => (
+          <div key={sp} className="flex flex-col items-center gap-0.5">
+            <span className="h-2 w-8 rounded-full" style={{ background: SPORT[sp].bg }} />
             <span className="text-xs text-zinc-400 capitalize">{sp}</span>
-            <span className="text-sm font-bold text-zinc-200">{hrs.toFixed(1)}h</span>
+            <span className="font-condensed text-sm font-bold text-zinc-200">{hrs.toFixed(1)}h</span>
+            <span className="text-[10px] text-zinc-500">{pct.toFixed(0)}%</span>
           </div>
         ))}
       </div>
