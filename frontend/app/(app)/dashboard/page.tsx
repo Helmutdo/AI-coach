@@ -41,6 +41,7 @@ import {
 } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 import { getSportColor } from "@/lib/sportColors";
+import { ActivityHeatmap } from "./ActivityHeatmap";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -1461,7 +1462,7 @@ export default function DashboardPage() {
             <button
               key={sp}
               onClick={() => setSportFilter(sp)}
-              className={`rounded-md px-3 py-1.5 text-xs font-bold capitalize transition ${
+              className={`rounded-md px-3 py-1.5 text-xs font-bold capitalize transition cursor-pointer ${
                 sportFilter === sp ? "text-white" : "text-zinc-500 hover:text-zinc-300"
               }`}
               style={
@@ -1477,17 +1478,17 @@ export default function DashboardPage() {
 
         <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/60 p-1 gap-1">
           {([
-            { value: 7, label: "7d" },
-            { value: 30, label: "30d" },
-            { value: 90, label: "3m" },
-            { value: 180, label: "6m" },
-            { value: 365, label: "1y" },
-            { value: 0, label: "All" },
+            { value: 7,   label: "7d"  },
+            { value: 30,  label: "30d" },
+            { value: 90,  label: "3m"  },
+            { value: 180, label: "6m"  },
+            { value: 365, label: "1y"  },
+            { value: 0,   label: "All" },
           ] as { value: DateRange; label: string }[]).map(({ value, label }) => (
             <button
               key={value}
               onClick={() => setDateRange(value)}
-              className={`rounded-md px-3 py-1.5 text-xs font-bold transition ${
+              className={`rounded-md px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
                 dateRange === value
                   ? "bg-zinc-700 text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1499,9 +1500,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Loading label */}
+      {/* Loading */}
       {loading && (
-        <p className="text-center text-sm text-zinc-500">Syncing your training data…</p>
+        <p className="text-center text-sm text-zinc-500">Loading your training data…</p>
       )}
 
       {/* Empty state */}
@@ -1513,16 +1514,65 @@ export default function DashboardPage() {
         />
       )}
 
-      {/* KPI row */}
-      <div className="space-y-2">
-        {/* Compare toggle */}
-        <div className="flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900/60 p-1 w-fit">
+      {/* KPI hero row */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <KPICard
+          label="Training Load"
+          value={kpis.totalTSS}
+          sub={`TSS · ${dateRange === 0 ? "all time" : `${dateRange}d`}`}
+          trend={kpis.tssTrend}
+          loading={loading}
+          accentColor={CLR.fresh}
+        />
+        <KPICard
+          label="Swim"
+          value={`${kpis.swimH.toFixed(1)}h`}
+          loading={loading}
+          accentColor={SPORT.swim.bg}
+        />
+        <KPICard
+          label="Bike"
+          value={`${kpis.bikeH.toFixed(1)}h`}
+          loading={loading}
+          accentColor={SPORT.bike.bg}
+        />
+        <KPICard
+          label="Run"
+          value={`${kpis.runH.toFixed(1)}h`}
+          loading={loading}
+          accentColor={SPORT.run.bg}
+        />
+        <KPICard
+          label="HRV Trend"
+          value={kpis.hrv7 ?? "—"}
+          sub={kpis.hrv14 != null ? `prev 7d: ${kpis.hrv14}` : "7-day avg"}
+          trend={kpis.hrvTrend}
+          loading={loading}
+        />
+        <KPICard
+          label="Race Readiness"
+          value={readiness}
+          sub="/100"
+          loading={loading}
+          valueColor={readinessColor(readiness)}
+        />
+      </div>
+
+      {/* Training Calendar */}
+      <ActivityHeatmap
+        activities={merged.map((a) => ({ date: a.date, sport: a.sport }))}
+      />
+
+      {/* Week compare toggle (compact) */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-zinc-500">Compare:</span>
+        <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/60 p-1 gap-1">
           {(["current", "compare"] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => setCompareMode(m)}
-              className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+              className={`rounded-md px-3 py-1 text-xs font-semibold transition cursor-pointer ${
                 compareMode === m
                   ? "bg-zinc-700 text-zinc-100"
                   : "text-zinc-500 hover:text-zinc-300"
@@ -1532,74 +1582,16 @@ export default function DashboardPage() {
             </button>
           ))}
         </div>
-
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          {compareMode === "compare" ? (
-            <>
-              <KPICard
-                label="Training Load"
-                value={`${weeklyKpis.thisTSS} TSS`}
-                loading={loading}
-                prevValue={`${weeklyKpis.lastTSS} TSS`}
-                changePct={weeklyKpis.tssChange}
-              />
-              <KPICard
-                label="Volume"
-                value={`${weeklyKpis.thisH}h`}
-                loading={loading}
-                prevValue={`${weeklyKpis.lastH}h`}
-                changePct={weeklyKpis.hrsChange}
-              />
-              <KPICard
-                label="Sessions"
-                value={weeklyKpis.thisSessions}
-                loading={loading}
-                prevValue={weeklyKpis.lastSessions}
-                changePct={weeklyKpis.sessionsChange}
-              />
-              <KPICard
-                label="Race Readiness"
-                value={readiness}
-                sub="/100"
-                loading={loading}
-                valueColor={readinessColor(readiness)}
-              />
-            </>
-          ) : (
-            <>
-              <KPICard
-                label="Training Load"
-                value={kpis.totalTSS}
-                sub={`TSS over ${dateRange}d`}
-                trend={kpis.tssTrend}
-                loading={loading}
-              />
-              <KPICard
-                label="Volume"
-                value={`${kpis.totalH.toFixed(1)}h`}
-                sub={`${kpis.swimH.toFixed(1)} swim · ${kpis.bikeH.toFixed(1)} bike · ${kpis.runH.toFixed(1)} run`}
-                loading={loading}
-              />
-              <KPICard
-                label="HRV Trend"
-                value={kpis.hrv7 ?? "—"}
-                sub={kpis.hrv14 != null ? `prev 7d: ${kpis.hrv14}` : "7-day avg score"}
-                trend={kpis.hrvTrend}
-                loading={loading}
-              />
-              <KPICard
-                label="Race Readiness"
-                value={readiness}
-                sub="/100 · HRV + sleep + form"
-                loading={loading}
-                valueColor={readinessColor(readiness)}
-              />
-            </>
-          )}
-        </div>
+        {compareMode === "compare" && (
+          <div className="flex gap-3 ml-2">
+            <KPICard label="Load" value={`${weeklyKpis.thisTSS} TSS`} loading={loading} prevValue={`${weeklyKpis.lastTSS} TSS`} changePct={weeklyKpis.tssChange} />
+            <KPICard label="Volume" value={`${weeklyKpis.thisH}h`} loading={loading} prevValue={`${weeklyKpis.lastH}h`} changePct={weeklyKpis.hrsChange} />
+            <KPICard label="Sessions" value={weeklyKpis.thisSessions} loading={loading} prevValue={weeklyKpis.lastSessions} changePct={weeklyKpis.sessionsChange} />
+          </div>
+        )}
       </div>
 
-      {/* Main charts row */}
+      {/* Main row: Weekly TSS (2/3) + Volume donut (1/3) */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <WeeklyTSSChart data={weeklyTSS} easyPct={easyPct} />
@@ -1607,13 +1599,13 @@ export default function DashboardPage() {
         <VolumeSplitPanel activities={sportFiltered} />
       </div>
 
-      {/* Second charts row */}
+      {/* Second row: HR Zones + Recovery (with gauge + HRV area) */}
       <div className="grid gap-4 lg:grid-cols-2">
         <HRZonesChart activities={sportFiltered} sportFilter={sportFilter} />
         <RecoveryPanel metrics={dailyMetrics} activities={merged} readiness={readiness} />
       </div>
 
-      {/* PMC */}
+      {/* PMC — full width */}
       <PMCChart data={pmcData} />
 
       {/* AI Insight */}
