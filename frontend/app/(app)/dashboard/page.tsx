@@ -578,6 +578,7 @@ function KPICard({
   valueColor,
   prevValue,
   changePct,
+  accentColor,
 }: {
   label: string;
   value: string | number;
@@ -587,17 +588,24 @@ function KPICard({
   valueColor?: string;
   prevValue?: string | number;
   changePct?: number | null;
+  accentColor?: string;
 }) {
   if (loading) return <Skel className="h-28" />;
   const showCompare = prevValue !== undefined;
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 flex flex-col gap-1">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 flex flex-col gap-1 overflow-hidden relative">
+      {accentColor && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-xl" style={{ background: accentColor }} />
+      )}
       <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">{label}</p>
-      <p className="text-3xl font-black leading-none" style={{ color: valueColor ?? "#f4f4f5" }}>
+      <p
+        className="font-condensed text-5xl font-bold leading-none tracking-tight"
+        style={{ color: valueColor ?? "#f4f4f5" }}
+      >
         {value}
         {showCompare && changePct != null && (
-          <span className={`ml-1.5 text-sm font-semibold ${changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {changePct >= 0 ? "↑" : "↓"}
+          <span className={`ml-2 text-base font-semibold ${changePct >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {changePct >= 0 ? "↑" : "↓"}{Math.abs(changePct).toFixed(0)}%
           </span>
         )}
       </p>
