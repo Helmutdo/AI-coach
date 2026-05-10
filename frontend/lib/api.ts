@@ -303,6 +303,32 @@ export async function uploadGarminCSV(file: File): Promise<CSVUploadResponse> {
   return data;
 }
 
+export async function uploadHRVCSV(
+  file: File
+): Promise<{ status: string; updated: number; inserted: number; skipped: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post(
+    "/api/garmin/upload-hrv-csv",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return data;
+}
+
+export async function uploadVO2maxCSV(
+  file: File
+): Promise<{ status: string; vo2max: number }> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post(
+    "/api/garmin/upload-vo2max-csv",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } }
+  );
+  return data;
+}
+
 export async function getGarminDailyMetrics(params?: {
   days?: number;
 }): Promise<DailyMetricRow[]> {

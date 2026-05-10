@@ -41,6 +41,8 @@ def format_profile_for_prompt(profile: AthleteProfile) -> str:
         parts.append(f"Training: ~{profile.hours_per_week}h/week.")
     if profile.next_race_date:
         parts.append(f"Next race: {profile.next_race_date}.")
+    if profile.vo2max is not None:
+        parts.append(f"VO2max: {profile.vo2max} ml/kg/min.")
     return " ".join(parts)
 
 

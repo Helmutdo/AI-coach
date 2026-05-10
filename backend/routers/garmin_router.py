@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db
 from dependencies.auth import get_current_user_id
-from models.models import DailyMetrics, GarminActivity, StravaActivity
+from models.models import AthleteProfile, DailyMetrics, GarminActivity, StravaActivity
 from services.sync_service import SyncService
 
 router = APIRouter(prefix="/garmin", tags=["garmin"])
@@ -430,3 +430,166 @@ def garmin_summary(
         "hrv_status_mode": hrv_mode,
         "current_body_battery": body_battery,
     }
+
+
+# ── Spanish month abbreviations used by Garmin Connect CSV exports ──
+_ES_MONTHS = {
+    "ene": 1, "feb": 2, "mar": 3, "abr": 4, "may": 5, "jun": 6,
+    "jul": 7, "ago": 8, "sep": 9, "oct": 10, "nov": 11, "dic": 12,
+}
+
+
+def _parse_garmin_date(raw: str) -> date | None:
+    """Parse 'May 9' or 'Abr 30' (Garmin HRV CSV) into a date object."""
+    parts = raw.strip().split()
+    if len(parts) != 2:
+        return None
+    mon_raw, day_raw = parts
+    mon_key = mon_raw.lower()
+    month = _ES_MONTHS.get(mon_key)
+    if month is None:
+        # Try English month names as fallback
+        import calendar
+        abbrs = {a.lower(): i + 1 for i, a in enumerate(calendar.month_abbr) if a}
+        month = abbrs.get(mon_key)
+    if month is None:
+        return None
+    try:
+        day = int(day_raw)
+    except ValueError:
+        return None
+    today = date.today()
+    year = today.year
+    if month > today.month or (month == today.month and day > today.day):
+        year -= 1
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def _parse_ms(raw: str) -> float | None:
+    """Parse '35ms' → 35.0, '--' → None."""
+    s = raw.strip().lower().replace("ms", "").strip()
+    if s in ("--", "", "n/a"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+@router.post("/upload-hrv-csv")
+@limiter.limit("10/minute")
+def upload_hrv_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """Import Garmin 'Estado de VFC' CSV — upserts HRV ms values into daily_metrics."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+    raw_bytes = file.file.read(2 * 1024 * 1024 + 1)
+    if len(raw_bytes) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="CSV too large (max 2 MB).")
+    text = raw_bytes.decode("utf-8-sig", errors="replace")
+
+    import csv as _csv
+    reader = _csv.DictReader(io.StringIO(text))
+    uid = uuid.UUID(user_id)
+
+    updated = inserted = skipped = 0
+    for row in reader:
+        # Columns: Fecha | VFC durante la noche | Valor de referencia | Media de 7 días
+        fecha_raw = (row.get("Fecha") or "").strip()
+        if not fecha_raw:
+            skipped += 1
+            continue
+        d = _parse_garmin_date(fecha_raw)
+        if d is None:
+            skipped += 1
+            continue
+
+        rmssd = _parse_ms(row.get("VFC durante la noche") or "")
+        avg7d = _parse_ms(row.get("Media de 7 días") or "")
+        ref_raw = (row.get("Valor de referencia") or "").strip()
+        ref_low = ref_high = None
+        if " - " in ref_raw:
+            lo, hi = ref_raw.split(" - ", 1)
+            ref_low = _parse_ms(lo)
+            ref_high = _parse_ms(hi)
+
+        existing = (
+            db.query(DailyMetrics)
+            .filter(DailyMetrics.user_id == uid, DailyMetrics.date == d)
+            .first()
+        )
+        if existing:
+            if rmssd is not None:
+                existing.hrv_rmssd_ms = rmssd
+            if avg7d is not None:
+                existing.hrv_7d_avg_ms = avg7d
+            if ref_low is not None:
+                existing.hrv_ref_low_ms = ref_low
+            if ref_high is not None:
+                existing.hrv_ref_high_ms = ref_high
+            updated += 1
+        else:
+            db.add(DailyMetrics(
+                user_id=uid,
+                date=d,
+                hrv_rmssd_ms=rmssd,
+                hrv_7d_avg_ms=avg7d,
+                hrv_ref_low_ms=ref_low,
+                hrv_ref_high_ms=ref_high,
+            ))
+            inserted += 1
+
+    db.commit()
+    return {"status": "ok", "updated": updated, "inserted": inserted, "skipped": skipped}
+
+
+@router.post("/upload-vo2max-csv")
+@limiter.limit("10/minute")
+def upload_vo2max_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> dict[str, Any]:
+    """Import Garmin 'Consumo máximo de oxígeno' CSV — stores VO2max in athlete profile."""
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Please upload a .csv file.")
+    raw_bytes = file.file.read(64 * 1024)
+    text = raw_bytes.decode("utf-8-sig", errors="replace")
+
+    import csv as _csv
+    reader = _csv.reader(io.StringIO(text))
+    vo2max: float | None = None
+    for row in reader:
+        for cell in row:
+            cell = cell.strip()
+            try:
+                val = float(cell)
+                if 10.0 <= val <= 90.0:
+                    vo2max = val
+                    break
+            except ValueError:
+                continue
+        if vo2max is not None:
+            break
+
+    if vo2max is None:
+        raise HTTPException(status_code=422, detail="Could not parse a VO2max value from the CSV.")
+
+    uid = uuid.UUID(user_id)
+    profile = db.query(AthleteProfile).filter(AthleteProfile.user_id == uid).first()
+    if profile is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Complete your athlete profile first before uploading VO2max.",
+        )
+    profile.vo2max = vo2max
+    db.commit()
+    return {"status": "ok", "vo2max": vo2max}

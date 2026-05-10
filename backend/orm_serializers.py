@@ -55,5 +55,9 @@ def daily_metrics_to_dict(m: DailyMetrics) -> dict[str, Any]:
         "body_battery_max": m.body_battery_max,
         "vo2max": m.vo2max,
         "hrv_status": m.hrv_status,
+        "hrv_rmssd_ms": m.hrv_rmssd_ms,
+        "hrv_7d_avg_ms": m.hrv_7d_avg_ms,
+        "hrv_ref_low_ms": m.hrv_ref_low_ms,
+        "hrv_ref_high_ms": m.hrv_ref_high_ms,
         "raw_data": m.raw_data,
     }

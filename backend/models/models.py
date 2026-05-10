@@ -182,6 +182,10 @@ class DailyMetrics(Base):
     body_battery_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     vo2max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     hrv_status: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    hrv_rmssd_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hrv_7d_avg_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hrv_ref_low_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    hrv_ref_high_ms: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     raw_data: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
 
@@ -233,6 +237,7 @@ class AthleteProfile(Base):
     target_distance: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     primary_goal: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     next_race_date: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    vo2max: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -12,6 +12,8 @@ import {
   getStravaStatus,
   patchUserDisplayName,
   postStravaSync,
+  uploadHRVCSV,
+  uploadVO2maxCSV,
 } from "@/lib/api";
 import { modelBadgeLabel } from "@/lib/aiProviders";
 import { useAppStore } from "@/store/appStore";
@@ -78,6 +80,11 @@ export default function SettingsPage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [nameMsg, setNameMsg] = useState<string | null>(null);
+
+  const [hrvUploading, setHrvUploading] = useState(false);
+  const [hrvMsg, setHrvMsg] = useState<string | null>(null);
+  const [vo2Uploading, setVo2Uploading] = useState(false);
+  const [vo2Msg, setVo2Msg] = useState<string | null>(null);
 
   const refreshStatuses = useCallback(async () => {
     if (!userId) return;
@@ -325,6 +332,73 @@ export default function SettingsPage() {
             </p>
             <div className="mt-4 flex flex-1 flex-col">
               <GarminCSVUpload onUploaded={() => refreshStatuses()} />
+            </div>
+            <div className="mt-4 border-t border-zinc-800 pt-4 space-y-3">
+              <p className="text-xs font-medium text-zinc-400">Wellness data (optional)</p>
+              {/* HRV CSV */}
+              <div className="flex items-center gap-3">
+                <label className="flex-1 text-xs text-zinc-400">
+                  HRV status CSV{" "}
+                  <span className="text-zinc-600">(Estado de VFC.csv)</span>
+                </label>
+                <label className="cursor-pointer rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors">
+                  {hrvUploading ? <Spinner className="h-3 w-3" /> : "Upload"}
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    disabled={hrvUploading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setHrvUploading(true);
+                      setHrvMsg(null);
+                      try {
+                        const r = await uploadHRVCSV(f);
+                        setHrvMsg(`✓ ${r.updated} updated, ${r.inserted} inserted`);
+                      } catch {
+                        setHrvMsg("Upload failed");
+                      } finally {
+                        setHrvUploading(false);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              {hrvMsg && <p className="text-xs text-zinc-400">{hrvMsg}</p>}
+              {/* VO2max CSV */}
+              <div className="flex items-center gap-3">
+                <label className="flex-1 text-xs text-zinc-400">
+                  VO2max CSV{" "}
+                  <span className="text-zinc-600">(Consumo máximo de oxígeno.csv)</span>
+                </label>
+                <label className="cursor-pointer rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-700 transition-colors">
+                  {vo2Uploading ? <Spinner className="h-3 w-3" /> : "Upload"}
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    disabled={vo2Uploading}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      setVo2Uploading(true);
+                      setVo2Msg(null);
+                      try {
+                        const r = await uploadVO2maxCSV(f);
+                        setVo2Msg(`✓ VO2max saved: ${r.vo2max} ml/kg/min`);
+                      } catch {
+                        setVo2Msg("Upload failed — complete your athlete profile first");
+                      } finally {
+                        setVo2Uploading(false);
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+              {vo2Msg && <p className="text-xs text-zinc-400">{vo2Msg}</p>}
             </div>
           </div>
 

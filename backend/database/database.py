@@ -102,6 +102,35 @@ def _sqlite_add_chat_conversation_id() -> None:
         )
 
 
+def _migrate_daily_metrics_hrv() -> None:
+    """Add HRV ms columns to daily_metrics if missing."""
+    insp = inspect(engine)
+    if not insp.has_table("daily_metrics"):
+        return
+    cols = {c["name"] for c in insp.get_columns("daily_metrics")}
+    new_cols = {
+        "hrv_rmssd_ms": "REAL",
+        "hrv_7d_avg_ms": "REAL",
+        "hrv_ref_low_ms": "REAL",
+        "hrv_ref_high_ms": "REAL",
+    }
+    with engine.begin() as conn:
+        for col, typ in new_cols.items():
+            if col not in cols:
+                conn.execute(text(f"ALTER TABLE daily_metrics ADD COLUMN {col} {typ}"))
+
+
+def _migrate_athlete_profile_vo2max() -> None:
+    """Add vo2max column to athlete_profiles if missing."""
+    insp = inspect(engine)
+    if not insp.has_table("athlete_profiles"):
+        return
+    cols = {c["name"] for c in insp.get_columns("athlete_profiles")}
+    if "vo2max" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE athlete_profiles ADD COLUMN vo2max REAL"))
+
+
 def init_db() -> None:
     """Import models and create all tables (development / simple deployments)."""
     import models.models  # noqa: F401 — registers tables on Base.metadata
@@ -110,6 +139,8 @@ def init_db() -> None:
     _migrate_user_settings_secrets()
     _sqlite_add_chat_conversation_id()
     _migrate_user_settings_strava()
+    _migrate_daily_metrics_hrv()
+    _migrate_athlete_profile_vo2max()
 
 
 def get_db() -> Generator[Session, None, None]:

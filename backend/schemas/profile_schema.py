@@ -19,6 +19,7 @@ class AthleteProfileIn(BaseModel):
     target_distance: Optional[str] = Field(None, pattern="^(sprint|olympic|70\\.3|ironman)$")
     primary_goal: Optional[str] = Field(None, pattern="^(finish|time_goal|fitness|weight)$")
     next_race_date: Optional[str] = Field(None, max_length=128)
+    vo2max: Optional[float] = Field(None, ge=10.0, le=90.0)
 
 
 class AthleteProfileOut(AthleteProfileIn):

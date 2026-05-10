@@ -395,9 +395,21 @@ class AICoachService:
         dated.sort(key=lambda x: x[0], reverse=True)
         last14 = dated[:14]
         for d, m in last14:
+            rmssd = m.get("hrv_rmssd_ms")
+            avg7d = m.get("hrv_7d_avg_ms")
+            ref_lo = m.get("hrv_ref_low_ms")
+            ref_hi = m.get("hrv_ref_high_ms")
+            hrv_part = m.get("hrv_status", "—")
+            if rmssd is not None:
+                hrv_part = f"{rmssd:.0f}ms"
+                if avg7d is not None:
+                    hrv_part += f" (7d avg {avg7d:.0f}ms"
+                    if ref_lo is not None and ref_hi is not None:
+                        hrv_part += f", ref {ref_lo:.0f}-{ref_hi:.0f}ms"
+                    hrv_part += ")"
             lines.append(
                 f"{d.isoformat()}: sleep_score={m.get('sleep_score', '—')} | "
-                f"HRV_status={m.get('hrv_status', '—')} | "
+                f"HRV={hrv_part} | "
                 f"avg_stress={m.get('avg_stress', '—')} | "
                 f"body_battery={m.get('body_battery_min', '—')}-{m.get('body_battery_max', '—')} | "
                 f"steps={m.get('steps', '—')} | RHR={m.get('resting_heart_rate', '—')}"
