@@ -10,6 +10,7 @@ import {
   deleteUserData,
   getAIStatus,
   getStravaStatus,
+  patchUserDisplayName,
   postStravaSync,
 } from "@/lib/api";
 import { modelBadgeLabel } from "@/lib/aiProviders";
@@ -61,6 +62,8 @@ export default function SettingsPage() {
     setLastSync,
     userId,
     lastSync,
+    displayName,
+    setDisplayName,
   } = useAppStore();
 
   const [aiModel, setAiModel] = useState<string | null>(null);
@@ -70,6 +73,11 @@ export default function SettingsPage() {
   const [deletingData, setDeletingData] = useState(false);
   const [stravaToast, setStravaToast] = useState<string | null>(null);
   const [stravaOAuthErr, setStravaOAuthErr] = useState<string | null>(null);
+
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [savingName, setSavingName] = useState(false);
+  const [nameMsg, setNameMsg] = useState<string | null>(null);
 
   const refreshStatuses = useCallback(async () => {
     if (!userId) return;
@@ -146,6 +154,23 @@ export default function SettingsPage() {
     setSyncing(false);
   }
 
+  async function saveName() {
+    const trimmed = nameInput.trim();
+    if (!trimmed) return;
+    setSavingName(true);
+    setNameMsg(null);
+    try {
+      const res = await patchUserDisplayName(trimmed);
+      setDisplayName(res.name);
+      setEditingName(false);
+      setNameMsg("Name updated.");
+    } catch (e) {
+      setNameMsg(e instanceof Error ? e.message : "Failed to save name.");
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   function confirmDeleteData() {
     const ok = window.confirm(
       "This permanently deletes your synced activities, daily metrics, and coach chat history from our servers. Continue?"
@@ -173,7 +198,7 @@ export default function SettingsPage() {
     );
   }
 
-  const name = session?.user?.name ?? "—";
+  const name = displayName ?? session?.user?.name ?? "—";
   const email = session?.user?.email ?? "—";
   const avatar = session?.user?.image;
 
@@ -213,8 +238,48 @@ export default function SettingsPage() {
               </div>
             )}
             <div>
-              <p className="font-medium text-zinc-100">{name}</p>
+              {editingName ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={nameInput}
+                    onChange={(e) => setNameInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") void saveName(); if (e.key === "Escape") setEditingName(false); }}
+                    className="rounded-md border border-zinc-600 bg-zinc-800 px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveName()}
+                    disabled={savingName || !nameInput.trim()}
+                    className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
+                  >
+                    {savingName ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingName(false)}
+                    className="text-xs text-zinc-500 hover:text-zinc-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-zinc-100">{name}</p>
+                  <button
+                    type="button"
+                    onClick={() => { setNameInput(name === "—" ? "" : name); setEditingName(true); setNameMsg(null); }}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 underline-offset-2 hover:underline cursor-pointer"
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
               <p className="text-sm text-zinc-500">{email}</p>
+              {nameMsg && (
+                <p className="mt-1 text-xs text-emerald-400">{nameMsg}</p>
+              )}
             </div>
           </div>
           <button

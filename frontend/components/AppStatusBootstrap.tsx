@@ -3,7 +3,7 @@
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
 
-import { getAIStatus, getGarminStatus, getStravaStatus } from "@/lib/api";
+import { getAIStatus, getGarminStatus, getStravaStatus, getUserMe } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 
 /**
@@ -13,16 +13,18 @@ export function AppStatusBootstrap() {
   const { status } = useSession();
   const userId = useAppStore((s) => s.userId);
   const setStatusFromApi = useAppStore((s) => s.setStatusFromApi);
+  const setDisplayName = useAppStore((s) => s.setDisplayName);
 
   useEffect(() => {
     if (status !== "authenticated" || !userId) return;
     let cancelled = false;
     (async () => {
       try {
-        const [g, st, ai] = await Promise.all([
+        const [g, st, ai, me] = await Promise.all([
           getGarminStatus(),
           getStravaStatus(),
           getAIStatus(),
+          getUserMe().catch(() => null),
         ]);
         if (!cancelled) {
           setStatusFromApi({
@@ -34,6 +36,7 @@ export function AppStatusBootstrap() {
             aiConfigured: ai.configured,
             aiProvider: ai.provider ?? null,
           });
+          if (me?.name) setDisplayName(me.name);
         }
       } catch (err) {
         console.error("[AppStatusBootstrap] Failed to load status from backend:", err);
@@ -52,7 +55,7 @@ export function AppStatusBootstrap() {
     return () => {
       cancelled = true;
     };
-  }, [status, userId, setStatusFromApi]);
+  }, [status, userId, setStatusFromApi, setDisplayName]);
 
   return null;
 }

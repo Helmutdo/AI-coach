@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -54,6 +54,51 @@ def upsert_me(body: UserMeBody, db: Session = Depends(get_db)) -> dict[str, Any]
         "name": row.name,
         "avatar_url": row.avatar_url,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+class PatchMeBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=512)
+
+
+@router.get("/me")
+def get_me(
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
+    row = db.query(User).filter(User.id == uid).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": str(row.id),
+        "google_id": row.google_id,
+        "email": row.email,
+        "name": row.name,
+        "avatar_url": row.avatar_url,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+@router.patch("/me")
+def patch_me(
+    body: PatchMeBody,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    uid = uuid.UUID(user_id)
+    row = db.query(User).filter(User.id == uid).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    row.name = body.name.strip()
+    row.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(row)
+    return {
+        "id": str(row.id),
+        "name": row.name,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }
 

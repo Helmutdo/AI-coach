@@ -13,12 +13,15 @@ export type AppStore = {
   aiProvider: string | null;
   lastSync: Date | null;
   userId: string | null;
+  /** Custom display name set by the user, overrides Google OAuth name. */
+  displayName: string | null;
   setGarminConnected: (v: boolean) => void;
   setAiConfigured: (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setAiProvider: (v: string | null) => void;
   setLastSync: (d: Date | null) => void;
   setUserId: (id: string | null) => void;
+  setDisplayName: (name: string | null) => void;
   setStatusFromApi: (g: {
     garminActive: boolean;
     garminHasData?: boolean;
@@ -49,6 +52,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   aiProvider: null,
   lastSync: null,
   userId: null,
+  displayName: null,
   setGarminConnected: (v) =>
     set({
       garminConnected: v,
@@ -73,6 +77,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setAiProvider: (v) => set({ aiProvider: v }),
   setLastSync: (d) => set({ lastSync: d }),
   setUserId: (id) => set({ userId: id }),
+  setDisplayName: (name) => set({ displayName: name }),
   setStatusFromApi: ({
     garminActive,
     garminHasData,

@@ -46,7 +46,8 @@ export default function OnboardingPage() {
   const [fitnessProvider, setFitnessProvider] = useState<FitnessProviderStep>("choice");
   const [csvUploaded, setCsvUploaded] = useState(false);
 
-  const displayName = session?.user?.name || session?.user?.email || "there";
+  const storeDisplayName = useAppStore((s) => s.displayName);
+  const displayName = storeDisplayName || session?.user?.name || session?.user?.email || "there";
   const avatar = session?.user?.image;
 
   const anyFitnessConnected = garminConnected || hasGarminData || stravaConnected || csvUploaded;

@@ -18,7 +18,8 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use((config) => {
   const url = config.url ?? "";
-  const skip = url.includes("/api/users/me");
+  // POST /api/users/me is the upsert called at login before userId is available — skip only that.
+  const skip = config.method?.toUpperCase() === "POST" && url.includes("/api/users/me");
   if (!skip && typeof window !== "undefined") {
     const id = useAppStore.getState().userId;
     if (id) {
@@ -185,6 +186,16 @@ export type UserMeResponse = {
 
 export async function postUsersMe(body: UserMeBody): Promise<UserMeResponse> {
   const { data } = await api.post<UserMeResponse>("/api/users/me", body);
+  return data;
+}
+
+export async function getUserMe(): Promise<UserMeResponse> {
+  const { data } = await api.get<UserMeResponse>("/api/users/me");
+  return data;
+}
+
+export async function patchUserDisplayName(name: string): Promise<{ id: string; name: string }> {
+  const { data } = await api.patch<{ id: string; name: string }>("/api/users/me", { name });
   return data;
 }
 
