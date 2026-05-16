@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+i#!/usr/bin/env bash
 # Arranque local: libera puertos típicos de dev y levanta API (8000) + Next (3000).
 set -euo pipefail
 

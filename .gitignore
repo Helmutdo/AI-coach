@@ -15,6 +15,7 @@ __pycache__/
 *.db
 *.sqlite3
 .pytest_cache/
+backend
 
 # ── AI Assistant ──────────────────────────────────────────────────────────────
 .claude/
@@ -23,12 +24,13 @@ docs/superpowers/
 
 # ── Project working notes (not for production) ────────────────────────────────
 Activities.csv
+historic_Activities.csv
 cambios_claude.txt
 proximos_pasos.txt
 PROYECTO_RESUMEN.txt
 img_post_beta/
 railway.toml
-
+csv_garmin_data
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
